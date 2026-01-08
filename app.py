@@ -333,8 +333,9 @@ elif selection == "📄 Macro Takling Point":
                 # 선택된 리포트 정보 찾기
                 selected_report = next((r for r in reports if r["display"] == selected_option), None)
 
-        # 메인 화면: 리포트 뷰어 (이제 전체 너비 사용)
         if selected_report:
+            # 1. 스크롤 앵커 삽입 (이 위치로 스크롤을 땡겨올 예정)
+            st.markdown('<div id="scroll-to-top-anchor"></div>', unsafe_allow_html=True)
             
             # 리포트 변경 시 스크롤을 맨 위로 초기화 (JS Injection)
             current_report_key = selected_report["filename"]
@@ -346,23 +347,24 @@ elif selection == "📄 Macro Takling Point":
                 components.html(
                     f"""
                     <script>
-                        // 리포트 키: {current_report_key} (이 키가 변경될 때마다 스크립트가 새로 실행됨)
-                        setTimeout(function() {{
+                        // 리포트 키가 바뀔 때마다 실행
+                        // 앵커(scroll-to-top-anchor)를 찾아서 scrollIntoView() 호출
+                        // 렌더링 타이밍 문제를 피하기 위해 다중 시도 (Burst)
+                        function forceScroll() {{
                             try {{
-                                var targets = [
-                                    window.parent.document.querySelector('[data-testid="stAppViewContainer"]'),
-                                    window.parent.document.querySelector('.main'),
-                                    window.parent.document.documentElement,
-                                    window.parent.document.body
-                                ];
-                                targets.forEach(function(t) {{
-                                    if (t) {{
-                                        t.scrollTop = 0;
-                                        t.scrollTo({{top: 0, behavior: 'auto'}});
-                                    }}
-                                }});
-                            }} catch (e) {{ console.log(e); }}
-                        }}, 150); 
+                                var anchor = window.parent.document.getElementById("scroll-to-top-anchor");
+                                if (anchor) {{
+                                    anchor.scrollIntoView({{behavior: 'auto', block: 'start'}});
+                                }}
+                            }} catch(e) {{}}
+                        }}
+                        
+                        // 시도 1: 즉시
+                        forceScroll(); 
+                        // 시도 2: 0.3초 후 (DOM 렌더링 완료 예상)
+                        setTimeout(forceScroll, 300);
+                        // 시도 3: 0.8초 후 (혹시 늦게 로딩될 경우)
+                        setTimeout(forceScroll, 800);
                     </script>
                     """,
                     height=0,
