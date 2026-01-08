@@ -4,3 +4,4 @@ yfinance
 plotly
 scikit-learn
 lightgbm
+scipy
