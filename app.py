@@ -409,7 +409,7 @@ if selection == "📈 전략 실험실 (Beta)":
     with st.expander("⚙️ 백테스팅 설정", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
-            ticker = st.text_input("종목 코드 (Ticker)", value="SPY")
+            ticker_input = st.text_input("종목 코드 (여러 개는 쉼표로 구분)", value="SPY, QQQ, AAPL")
         with col2:
             start_date = st.date_input("시작일", value=pd.to_datetime("2023-01-01"))
         with col3:
@@ -455,102 +455,139 @@ if selection == "📈 전략 실험실 (Beta)":
 
     # 3. 전략 실행 로직
     if st.button("🚀 전략 분석 실행"):
-        with st.spinner("데이터 분석 중..."):
-            try:
-                # A. 데이터 다운로드
-                df = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                
-                if df.empty:
-                    st.error(f"데이터를 불러올 수 없습니다. '{ticker}' 티커가 정확한지 확인해주세요.")
-                    st.stop()
-                
-                # yfinance 최신 버전 호환성 (Multi-index 컬럼 처리)
-                # 예: Columns가 ('Adj Close', 'SPY') 형태일 경우 --> 'Adj Close'로 Flatten
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-
-                # 컬럼 이름 정리 (필수 컬럼 확인)
-                # 어떤 버전은 'Adj Close' 대신 'Close'만 줄 수도 있음
-                if 'Adj Close' not in df.columns:
-                    if 'Close' in df.columns:
-                        df['Adj Close'] = df['Close']
-                    else:
-                        st.error(f"데이터 포맷 오류: 가격 데이터(Close/Adj Close)를 찾을 수 없습니다. (컬럼: {df.columns})")
-                        st.stop()
-                
-                # 수익률 계산
-                df['Return'] = df['Adj Close'].pct_change()
-                df.dropna(inplace=True)
-                
-                # B. 전략 로직 계산
-                df['Signal'] = 0 # 1: 보유, 0: 미보유
-
-                # ---------------- [전략 함수 정의] ----------------
-                if strategy_type == "이동평균선 크로스 (MA Crossover)":
-                    df['MA_Short'] = df['Adj Close'].rolling(window=params['short_window']).mean()
-                    df['MA_Long'] = df['Adj Close'].rolling(window=params['long_window']).mean()
-                    # Short > Long 일 때 보유 (1), 아니면 0
-                    df.loc[df['MA_Short'] > df['MA_Long'], 'Signal'] = 1
-                
-                elif strategy_type == "RSI (상대강도지수)":
-                    delta = df['Adj Close'].diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=params['window']).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=params['window']).mean()
-                    rs = gain / loss
-                    df['RSI'] = 100 - (100 / (1 + rs))
+        with st.spinner("데이터 분석 및 전략 시뮬레이션 중..."):
+            # 입력된 티커 파싱 (쉼표 구분)
+            tickers = [t.strip().upper() for t in ticker_input.split(',') if t.strip()]
+            
+            if not tickers:
+                st.warning("종목 코드를 입력해주세요.")
+                st.stop()
+            
+            results_list = []
+            equity_curves = pd.DataFrame()
+            
+            # 진행상황바
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i, ticker in enumerate(tickers):
+                status_text.text(f"분석 중: {ticker} ({i+1}/{len(tickers)})")
+                try:
+                    # A. 데이터 다운로드
+                    df = yf.download(ticker, start=start_date, end=end_date, progress=False)
                     
-                    # 상태 기반 로직: 매수 신호(1) 발생 시 상태 유지, 매도 신호(0) 발생 시 해제
-                    # 1: Long, 0: Cash
-                    import numpy as np
-                    df['Signal'] = np.nan # 초기화
-                    df.loc[df['RSI'] < params['buy_threshold'], 'Signal'] = 1 # 매수
-                    df.loc[df['RSI'] > params['sell_threshold'], 'Signal'] = 0 # 매도
-                    df['Signal'] = df['Signal'].ffill().fillna(0) # 상태 유지
-
-                elif strategy_type == "볼린저 밴드 (Bollinger Bands)":
-                    df['MA'] = df['Adj Close'].rolling(window=params['window']).mean()
-                    df['Std'] = df['Adj Close'].rolling(window=params['window']).std()
-                    df['Upper'] = df['MA'] + (df['Std'] * params['std_dev'])
-                    df['Lower'] = df['MA'] - (df['Std'] * params['std_dev'])
+                    if df.empty:
+                        st.warning(f"'{ticker}': 데이터를 불러올 수 없습니다. 건너뜁니다.")
+                        continue
                     
-                    # 하단 터치 시 매수, 상단 터치 시 매도
-                    import numpy as np
-                    df['Signal'] = np.nan
-                    df.loc[df['Adj Close'] < df['Lower'], 'Signal'] = 1
-                    df.loc[df['Adj Close'] > df['Upper'], 'Signal'] = 0
-                    df['Signal'] = df['Signal'].ffill().fillna(0)
-                # ------------------------------------------------
+                    # yfinance 최신 버전 호환성
+                    if isinstance(df.columns, pd.MultiIndex):
+                        try:
+                            df.columns = df.columns.get_level_values(0)
+                        except:
+                            # 만약 get_level_values가 실패하면 단순화 시도
+                            pass
 
-                # C. 수익률 계산
-                # 전날의 포지션(Signal)이 오늘의 수익률을 결정함
-                df['Strategy_Return'] = df['Signal'].shift(1) * df['Return']
-                
-                # 누적 수익률
-                df['Cumulative_Market'] = (1 + df['Return']).cumprod()
-                df['Cumulative_Strategy'] = (1 + df['Strategy_Return'].fillna(0)).cumprod()
-                
-                # D. 결과 시각화
-                chart_data = df[['Cumulative_Market', 'Cumulative_Strategy']]
-                chart_data.columns = [f'{ticker} (Buy&Hold)', 'Strategy']
-                
-                st.success("분석 완료!")
-                
-                # 1. 차트
-                fig = px.line(chart_data, title=f"백테스팅 결과: {ticker} ({strategy_type})")
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # 2. 성과 지표
-                total_return = df['Cumulative_Strategy'].iloc[-1] - 1
-                market_return = df['Cumulative_Market'].iloc[-1] - 1
-                
-                col_m1, col_m2, col_m3 = st.columns(3)
-                col_m1.metric("전략 수익률", f"{total_return:.2%}", delta=f"{total_return-market_return:.2%}")
-                col_m2.metric("벤치마크 수익률", f"{market_return:.2%}")
-                
-                # MDD 계산
-                drawdown = df['Cumulative_Strategy'] / df['Cumulative_Strategy'].cummax() - 1
-                mdd = drawdown.min()
-                col_m3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
+                    # 컬럼 이름 정리
+                    if 'Adj Close' not in df.columns:
+                        if 'Close' in df.columns:
+                            df['Adj Close'] = df['Close']
+                        else:
+                            st.warning(f"'{ticker}': 가격 데이터 부족. 건너뜁니다.")
+                            continue
+                    
+                    # 수익률 계산
+                    df = df.copy() # 경고 방지
+                    df['Return'] = df['Adj Close'].pct_change()
+                    df.dropna(inplace=True)
+                    
+                    # B. 전략 로직 계산
+                    df['Signal'] = 0 
 
-            except Exception as e:
-                st.error(f"오류 발생: {e}")
+                    # ---------------- [전략 함수 적용] ----------------
+                    if strategy_type == "이동평균선 크로스 (MA Crossover)":
+                        df['MA_Short'] = df['Adj Close'].rolling(window=params['short_window']).mean()
+                        df['MA_Long'] = df['Adj Close'].rolling(window=params['long_window']).mean()
+                        df.loc[df['MA_Short'] > df['MA_Long'], 'Signal'] = 1
+                    
+                    elif strategy_type == "RSI (상대강도지수)":
+                        delta = df['Adj Close'].diff()
+                        gain = (delta.where(delta > 0, 0)).rolling(window=params['window']).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(window=params['window']).mean()
+                        rs = gain / loss
+                        df['RSI'] = 100 - (100 / (1 + rs))
+                        
+                        import numpy as np
+                        df['Signal'] = np.nan
+                        df.loc[df['RSI'] < params['buy_threshold'], 'Signal'] = 1
+                        df.loc[df['RSI'] > params['sell_threshold'], 'Signal'] = 0
+                        df['Signal'] = df['Signal'].ffill().fillna(0)
+
+                    elif strategy_type == "볼린저 밴드 (Bollinger Bands)":
+                        df['MA'] = df['Adj Close'].rolling(window=params['window']).mean()
+                        df['Std'] = df['Adj Close'].rolling(window=params['window']).std()
+                        df['Upper'] = df['MA'] + (df['Std'] * params['std_dev'])
+                        df['Lower'] = df['MA'] - (df['Std'] * params['std_dev'])
+                        
+                        import numpy as np
+                        df['Signal'] = np.nan
+                        df.loc[df['Adj Close'] < df['Lower'], 'Signal'] = 1
+                        df.loc[df['Adj Close'] > df['Upper'], 'Signal'] = 0
+                        df['Signal'] = df['Signal'].ffill().fillna(0)
+                    # ------------------------------------------------
+
+                    # C. 성과 계산
+                    df['Strategy_Return'] = df['Signal'].shift(1) * df['Return']
+                    df['Cumulative_Strategy'] = (1 + df['Strategy_Return'].fillna(0)).cumprod()
+                    df['Cumulative_Market'] = (1 + df['Return']).cumprod()
+                    
+                    # MDD
+                    drawdown = df['Cumulative_Strategy'] / df['Cumulative_Strategy'].cummax() - 1
+                    mdd = drawdown.min()
+                    
+                    # 최종 수익률
+                    total_return = df['Cumulative_Strategy'].iloc[-1] - 1
+                    market_return = df['Cumulative_Market'].iloc[-1] - 1
+                    alpha = total_return - market_return
+
+                    # 결과 저장
+                    results_list.append({
+                        "종목": ticker,
+                        "전략 수익률": f"{total_return:.2%}",
+                        "벤치마크 수익률": f"{market_return:.2%}",
+                        "초과 수익 (Alpha)": f"{alpha:.2%}",
+                        "MDD": f"{mdd:.2%}",
+                        "Raw_Return": total_return # 정렬용
+                    })
+                    
+                    # 차트용 데이터 (인덱스 통일)
+                    equity_curves[ticker] = df['Cumulative_Strategy']
+                
+                except Exception as e:
+                    st.warning(f"'{ticker}' 분석 중 오류: {e}")
+                
+                # 진행률 업데이트
+                progress_bar.progress((i + 1) / len(tickers))
+            
+            status_text.empty()
+            progress_bar.empty()
+
+            if results_list:
+                st.success(f"총 {len(results_list)}개 종목 분석 완료!")
+                
+                # 1. 요약 테이블 (수익률 순 정렬)
+                results_df = pd.DataFrame(results_list)
+                results_df = results_df.sort_values(by="Raw_Return", ascending=False).drop(columns=["Raw_Return"])
+                
+                st.subheader("📊 종목별 성과 (수익률 순)")
+                st.dataframe(results_df, use_container_width=True)
+                
+                # 2. 비교 차트
+                st.subheader("📈 수익률 비교 차트")
+                if not equity_curves.empty:
+                    # 인덱스(날짜)가 서로 다를 수 있으므로 fillna
+                    equity_curves = equity_curves.fillna(method='ffill').fillna(1.0)
+                    fig = px.line(equity_curves, title=f"전략 누적 수익률 비교 ({strategy_type})")
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.error("분석된 결과가 없습니다. 티커를 확인해주세요.")
