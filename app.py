@@ -82,7 +82,7 @@ model = genai.GenerativeModel(
 )
 
 # 4. 웹 화면 UI 구성 (Streamlit)
-st.set_page_config(page_title="ㄹ로보어드바이저 챗봇", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="로보어드바이저 챗봇", page_icon="🤖", layout="wide")
 
 # OP.GG 스타일 커스텀 CSS 적용 (Light Theme)
 st.markdown(
