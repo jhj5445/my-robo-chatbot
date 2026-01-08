@@ -338,9 +338,13 @@ if selection == "🤖 챗봇":
             try:
                 # 마지막 사용자 메시지 가져오기
                 last_user_msg = st.session_state.messages[-1]["content"]
-                response = model.generate_content(last_user_msg)
-                st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
+                # API Key Rotation 적용
+                full_prompt = f"질문: {last_user_msg}\n\n답변 (한국어로, 금융 전문가처럼):"
+                response_text = generate_content_with_rotation(full_prompt)
+                
+                st.markdown(response_text)
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                
             except Exception as e:
                 st.error(f"오류가 발생했습니다: {e}")
 
@@ -1136,9 +1140,8 @@ elif selection == "🤖 AI 모델 테스팅":
                         prompt_context += "\nAct as a Quantitative Analyst. Explain WHY the model likely selected these stocks based on the provided indicators. Focus on the quantitative rationale. Write in Korean."
                         
                         try:
-                            insight_model = genai.GenerativeModel("gemini-3-flash-preview")
-                            response = insight_model.generate_content(prompt_context)
-                            insight_text = response.text
+                            # API Key Rotation 적용
+                            insight_text = generate_content_with_rotation(prompt_context, model_name="gemini-3-flash-preview")
                             
                             # 결과 캐싱
                             st.session_state.gemini_insights[cache_key] = {
