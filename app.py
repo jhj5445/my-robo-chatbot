@@ -1,5 +1,9 @@
 import streamlit as st
 import google.generativeai as genai
+import os
+import glob
+import re
+import streamlit.components.v1 as components
 
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
@@ -78,26 +82,112 @@ model = genai.GenerativeModel(
 )
 
 # 4. 웹 화면 UI 구성 (Streamlit)
-st.set_page_config(page_title="미래에셋 로보 챗봇", page_icon="🤖")
-st.title("🤖 미래에셋 로보어드바이저 상담")
-st.caption("FAQ 데이터를 기반으로 AI가 답변해 드립니다.")
+st.set_page_config(page_title="미래에셋 로보 챗봇", page_icon="🤖", layout="wide")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# 사이드바 네비게이션
+with st.sidebar:
+    st.title("메뉴")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 리포트 뷰어"])
 
-# 기존 대화 기록 표시
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+if selection == "🤖 챗봇":
+    st.title("🤖 미래에셋 로보어드바이저 상담")
+    st.caption("FAQ 데이터를 기반으로 AI가 답변해 드립니다.")
 
-# 사용자 질문 입력
-if prompt := st.chat_input("궁금한 점을 입력하세요"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    # AI 답변 생성
-    with st.chat_message("assistant"):
-        response = model.generate_content(prompt)
-        st.markdown(response.text)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+    # 기존 대화 기록 표시
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 사용자 질문 입력
+    if prompt := st.chat_input("궁금한 점을 입력하세요"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # AI 답변 생성
+        with st.chat_message("assistant"):
+            try:
+                response = model.generate_content(prompt)
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+
+elif selection == "📄 리포트 뷰어":
+    st.title("📄 Macro Talking Point 리포트 뷰어")
+    st.caption("각 지수와 날짜별 리포트를 확인하세요.")
+
+    # 리포트 파일 스캔 함수
+    def get_reports():
+        # 현재 디렉토리의 html 파일 검색
+        files = glob.glob("Macro Talking Point_ *.html")
+        reports = []
+        for f in files:
+            # 파일명 파싱: "Macro Talking Point_ {Index}_{Date}.html"
+            # 예: "Macro Talking Point_ CPI_20251216.html"
+            match = re.search(r"Macro Talking Point_ (.+?)_(\d+)\.html", f)
+            if match:
+                index_name = match.group(1)
+                date_str = match.group(2)
+                reports.append({
+                    "filename": f,
+                    "index": index_name,
+                    "date": date_str,
+                    "display": f"[{date_str}] {index_name}"
+                })
+        
+        # 날짜 내림차순 정렬
+        reports.sort(key=lambda x: x["date"], reverse=True)
+        return reports
+
+    reports = get_reports()
+
+    if not reports:
+        st.warning("표시할 리포트 파일이 없습니다.")
+    else:
+        # 2단 레이아웃: 선택창 / 뷰어
+        col1, col2 = st.columns([1, 3])
+
+        with col1:
+            st.markdown("### 리포트 목록")
+            
+            # 1. 카테고리 필터링
+            # 전체 카테고리 추출 및 "전체" 옵션 추가
+            categories = sorted(list(set([r["index"] for r in reports])))
+            categories.insert(0, "All")
+            
+            selected_category = st.selectbox("카테고리 선택:", categories)
+            
+            # 선택된 카테고리에 따라 리포트 필터링
+            if selected_category == "All":
+                filtered_reports = reports
+            else:
+                filtered_reports = [r for r in reports if r["index"] == selected_category]
+            
+            # 2. 리포트 선택
+            if not filtered_reports:
+                st.info("해당 카테고리에 리포트가 없습니다.")
+                selected_report = None
+            else:
+                report_options = [r["display"] for r in filtered_reports]
+                selected_option = st.radio("보고 싶은 리포트를 선택하세요:", report_options)
+                
+                # 선택된 리포트 정보 찾기
+                selected_report = next((r for r in reports if r["display"] == selected_option), None)
+
+        with col2:
+            if selected_report:
+                st.markdown(f"### 📑 {selected_report['index']} ({selected_report['date']})")
+                
+                # HTML 파일 읽어서 표시
+                try:
+                    with open(selected_report["filename"], "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                    
+                    # Streamlit 컴포넌트로 HTML 렌더링 (스크롤 가능하게 높이 지정)
+                    components.html(html_content, height=800, scrolling=True)
+                except Exception as e:
+                    st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
