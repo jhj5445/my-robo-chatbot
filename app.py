@@ -272,8 +272,8 @@ if selection == "🤖 챗봇":
             except Exception as e:
                 st.error(f"오류가 발생했습니다: {e}")
 
-elif selection == "📄 리포트 뷰어":
-    st.title("📄 Macro Talking Point 리포트 뷰어")
+elif selection == "📄 Macro Talking Point":
+    st.title("📄 Macro Talking Point 뷰어")
     st.caption("각 지수와 날짜별 리포트를 확인하세요.")
 
     # 리포트 파일 스캔 함수
