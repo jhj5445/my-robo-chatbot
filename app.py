@@ -403,7 +403,7 @@ if selection == "📄 Macro Takling Point":
 
 if selection == "📈 전략 실험실 (Beta)":
     st.title("📈 나만의 주식 전략 실험실 (Beta)")
-    st.caption("Gemini와 함께 아이디어를 코드로 구현하고, 과거 데이터로 검증해보세요.")
+    st.caption("대표적인 투자 전략들을 내 입맛대로 설정해서 검증해보세요.")
 
     # 1. 설정 입력
     with st.expander("⚙️ 백테스팅 설정", expanded=True):
@@ -415,113 +415,130 @@ if selection == "📈 전략 실험실 (Beta)":
         with col3:
             end_date = st.date_input("종료일", value=pd.to_datetime("today"))
 
-    # 2. 전략 대화 인터페이스
-    st.subheader("💡 어떤 전략을 테스트해볼까요?")
-    strategy_text = st.text_area(
-        "자연어로 전략을 설명해주세요.", 
-        height=100, 
-        placeholder="예: 20일 이동평균선이 60일 이동평균선을 골든크로스 하면 매수하고, 데드크로스 하면 매도해줘."
+    st.divider()
+
+    # 2. 전략 선택 및 파라미터 설정
+    st.subheader("🛠️ 전략 구성하기")
+    
+    strategy_type = st.selectbox(
+        "사용할 전략을 선택하세요.",
+        ["이동평균선 크로스 (MA Crossover)", "RSI (상대강도지수)", "볼린저 밴드 (Bollinger Bands)"]
     )
 
+    # 전략별 파라미터 UI (동적 변경)
+    params = {}
+    if strategy_type == "이동평균선 크로스 (MA Crossover)":
+        st.info("💡 **골든크로스 전략**: 단기 이평선이 장기 이평선을 돌파하면 매수, 깨지면 매도합니다.")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            params['short_window'] = st.number_input("단기 이동평균 (일)", value=20, min_value=1)
+        with col_p2:
+            params['long_window'] = st.number_input("장기 이동평균 (일)", value=60, min_value=1)
+
+    elif strategy_type == "RSI (상대강도지수)":
+        st.info("💡 **RSI 역추세 전략**: 과매도 구간(매수 기준 미만)에서 매수하고, 과매수 구간(매도 기준 초과)에서 매도합니다.")
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            params['window'] = st.number_input("RSI 기간", value=14, min_value=1)
+        with col_p2:
+            params['buy_threshold'] = st.number_input("매수 기준 (과매도)", value=30, min_value=0, max_value=100)
+        with col_p3:
+            params['sell_threshold'] = st.number_input("매도 기준 (과매수)", value=70, min_value=0, max_value=100)
+
+    elif strategy_type == "볼린저 밴드 (Bollinger Bands)":
+        st.info("💡 **볼린저 밴드 전략**: 주가가 하단 밴드를 터치하면 매수, 상단 밴드를 터치하면 매도합니다 (평균 회귀).")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            params['window'] = st.number_input("이동평균 기간", value=20, min_value=1)
+        with col_p2:
+            params['std_dev'] = st.number_input("표준편차 승수 (Standard Deviation multiplier)", value=2.0, step=0.1)
+
+    # 3. 전략 실행 로직
     if st.button("🚀 전략 분석 실행"):
-        if not strategy_text:
-            st.warning("전략 내용을 입력해주세요!")
-        else:
-            with st.spinner("1. 데이터 다운로드 및 전략 코드 생성 중..."):
+        with st.spinner("데이터 분석 중..."):
+            try:
                 # A. 데이터 다운로드
-                try:
-                    df = yf.download(ticker, start=start_date, end=end_date)
-                    if df.empty:
-                        st.error("데이터를 불러올 수 없습니다. 티커를 확인해주세요.")
-                        st.stop()
-                    
-                    df['Return'] = df['Adj Close'].pct_change()
-                    df.dropna(inplace=True)
-                except Exception as e:
-                    st.error(f"데이터 다운로드 오류: {e}")
+                df = yf.download(ticker, start=start_date, end=end_date)
+                if df.empty:
+                    st.error("데이터를 불러올 수 없습니다. 티커를 확인해주세요.")
                     st.stop()
-
-                # B. Gemini에게 코드 생성 요청
-                # 프롬프트 엔지니어링: 명확한 함수 시그니처 요구
-                prompt = f"""
-                You are a Python Quant Developer. 
-                Write a Python function named `calculate_signals` that takes a pandas DataFrame `df` as input.
-                The DataFrame `df` has columns: 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'.
                 
-                User Strategy Description: "{strategy_text}"
+                # yfinance 최신 버전 호환성 (Multi-index 컬럼 처리)
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+
+                df['Return'] = df['Adj Close'].pct_change()
+                df.dropna(inplace=True)
+
+                # B. 전략 로직 계산
+                df['Signal'] = 0 # 1: 보유, 0: 미보유
+
+                # ---------------- [전략 함수 정의] ----------------
+                if strategy_type == "이동평균선 크로스 (MA Crossover)":
+                    df['MA_Short'] = df['Adj Close'].rolling(window=params['short_window']).mean()
+                    df['MA_Long'] = df['Adj Close'].rolling(window=params['long_window']).mean()
+                    # Short > Long 일 때 보유 (1), 아니면 0
+                    df.loc[df['MA_Short'] > df['MA_Long'], 'Signal'] = 1
                 
-                Requirements:
-                1. Calculate necessary indicators (e.g., MA, RSI) using columns in `df`.
-                2. Return the DataFrame `df` with a new column 'Signal'.
-                3. 'Signal' must be: 1 (Buy/Hold), -1 (Sell/Short), or 0 (Neutral).
-                4. Do NOT import libraries inside the function (assume pandas as pd, numpy as np are available).
-                5. Provide ONLY the function code (no markdown, no explanations).
-                """
+                elif strategy_type == "RSI (상대강도지수)":
+                    delta = df['Adj Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=params['window']).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=params['window']).mean()
+                    rs = gain / loss
+                    df['RSI'] = 100 - (100 / (1 + rs))
+                    
+                    # 상태 기반 로직: 매수 신호(1) 발생 시 상태 유지, 매도 신호(0) 발생 시 해제
+                    # 1: Long, 0: Cash
+                    import numpy as np
+                    df['Signal'] = np.nan # 초기화
+                    df.loc[df['RSI'] < params['buy_threshold'], 'Signal'] = 1 # 매수
+                    df.loc[df['RSI'] > params['sell_threshold'], 'Signal'] = 0 # 매도
+                    df['Signal'] = df['Signal'].ffill().fillna(0) # 상태 유지
+
+                elif strategy_type == "볼린저 밴드 (Bollinger Bands)":
+                    df['MA'] = df['Adj Close'].rolling(window=params['window']).mean()
+                    df['Std'] = df['Adj Close'].rolling(window=params['window']).std()
+                    df['Upper'] = df['MA'] + (df['Std'] * params['std_dev'])
+                    df['Lower'] = df['MA'] - (df['Std'] * params['std_dev'])
+                    
+                    # 하단 터치 시 매수, 상단 터치 시 매도
+                    import numpy as np
+                    df['Signal'] = np.nan
+                    df.loc[df['Adj Close'] < df['Lower'], 'Signal'] = 1
+                    df.loc[df['Adj Close'] > df['Upper'], 'Signal'] = 0
+                    df['Signal'] = df['Signal'].ffill().fillna(0)
+                # ------------------------------------------------
+
+                # C. 수익률 계산
+                # 전날의 포지션(Signal)이 오늘의 수익률을 결정함
+                df['Strategy_Return'] = df['Signal'].shift(1) * df['Return']
                 
-                try:
-                    # 코드 생성용 별도 모델 호출 (또는 기존 모델 재사용)
-                    code_model = genai.GenerativeModel("gemini-2.0-flash-exp") 
-                    response = code_model.generate_content(prompt)
-                    generated_code = response.text
-                    
-                    # 마크다운 코드 블록 제거
-                    cleaned_code = generated_code.replace("```python", "").replace("```", "")
-                    
-                except Exception as e:
-                    st.error(f"AI 코드 생성 실패: {e}")
-                    st.stop()
+                # 누적 수익률
+                df['Cumulative_Market'] = (1 + df['Return']).cumprod()
+                df['Cumulative_Strategy'] = (1 + df['Strategy_Return'].fillna(0)).cumprod()
+                
+                # D. 결과 시각화
+                chart_data = df[['Cumulative_Market', 'Cumulative_Strategy']]
+                chart_data.columns = [f'{ticker} (Buy&Hold)', 'Strategy']
+                
+                st.success("분석 완료!")
+                
+                # 1. 차트
+                fig = px.line(chart_data, title=f"백테스팅 결과: {ticker} ({strategy_type})")
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 2. 성과 지표
+                total_return = df['Cumulative_Strategy'].iloc[-1] - 1
+                market_return = df['Cumulative_Market'].iloc[-1] - 1
+                
+                col_m1, col_m2, col_m3 = st.columns(3)
+                col_m1.metric("전략 수익률", f"{total_return:.2%}", delta=f"{total_return-market_return:.2%}")
+                col_m2.metric("벤치마크 수익률", f"{market_return:.2%}")
+                
+                # MDD 계산
+                drawdown = df['Cumulative_Strategy'] / df['Cumulative_Strategy'].cummax() - 1
+                mdd = drawdown.min()
+                col_m3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
 
-            with st.spinner("2. 백테스팅 시뮬레이션 중..."):
-                try:
-                    # C. 코드 실행 (Sandbox - 주의 필요)
-                    # st.write(cleaned_code) # 디버깅용
-                    
-                    # 안전을 위해 제한된 네임스페이스 사용 가능하지만, 여기서는 기능 구현 우선
-                    local_env = {}
-                    exec(cleaned_code, globals(), local_env)
-                    calculate_signals = local_env['calculate_signals']
-                    
-                    # D. 전략 적용
-                    df = calculate_signals(df)
-                    
-                    # E. 수익률 계산 (Strategy Return)
-                    # Signal은 '오늘' 나오면 '내일' 시초가 혹은 종가에 진입한다고 가정 (여기서는 간단히 종가-종가 수익률 적용)
-                    # 전날의 신호(shift(1))가 오늘의 수익률에 영향
-                    df['Strategy_Return'] = df['Signal'].shift(1) * df['Return']
-                    
-                    # 누적 수익률
-                    df['Cumulative_Market'] = (1 + df['Return']).cumprod()
-                    df['Cumulative_Strategy'] = (1 + df['Strategy_Return'].fillna(0)).cumprod()
-                    
-                    # F. 결과 시각화
-                    # 그래프 그리기
-                    chart_data = df[['Cumulative_Market', 'Cumulative_Strategy']]
-                    chart_data.columns = [f'{ticker} (Buy&Hold)', 'AI Strategy']
-                    
-                    st.success("분석 완료!")
-                    
-                    # 1. 차트
-                    fig = px.line(chart_data, title=f"백테스팅 결과: {ticker} vs AI 전략")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 2. 성과 지표
-                    total_return = df['Cumulative_Strategy'].iloc[-1] - 1
-                    market_return = df['Cumulative_Market'].iloc[-1] - 1
-                    
-                    col_m1, col_m2, col_m3 = st.columns(3)
-                    col_m1.metric("전략 최종 수익률", f"{total_return:.2%}", delta=f"{total_return-market_return:.2%}")
-                    col_m2.metric("벤치마크 수익률", f"{market_return:.2%}")
-                    
-                    # MDD 계산
-                    drawdown = df['Cumulative_Strategy'] / df['Cumulative_Strategy'].cummax() - 1
-                    mdd = drawdown.min()
-                    col_m3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
-
-                    # 3. 생성된 코드 확인
-                    with st.expander("🛠️ AI가 작성한 파이썬 코드 보기"):
-                        st.code(cleaned_code, language='python')
-
-                except Exception as e:
-                    st.error(f"백테스팅 실행 중 오류가 발생했습니다.\nAI가 생성한 코드에 문제가 있을 수 있습니다.\n에러 내용: {e}")
-                    with st.expander("오류가 발생한 코드 확인"):
-                        st.code(cleaned_code, language='python')
+            except Exception as e:
+                st.error(f"오류 발생: {e}")
