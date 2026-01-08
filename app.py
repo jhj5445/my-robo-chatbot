@@ -121,12 +121,37 @@ st.markdown(
             color: #dcddde;
         }
 
-        /* 채팅 입력창 스타일 */
-        .stChatInput textarea {
-            background-color: #40444b !important; /* Discord 입력창 색상 */
-            color: #dcddde !important;
-            border: none;
+        /* 채팅 입력창 스타일 수정 */
+        /* 입력창 전체 컨테이너 (둥근 테두리 및 배경) */
+        div[data-testid="stChatInput"] > div {
+            background-color: #40444b !important;
+            border-color: #40444b !important;
             border-radius: 8px;
+        }
+
+        /* 입력창 텍스트 영역 (투명 배경) */
+        div[data-testid="stChatInput"] textarea {
+            background-color: transparent !important;
+            color: #dcddde !important; /* 텍스트 색상 */
+        }
+        
+        /* 플레이스홀더 텍스트 색상 */
+        div[data-testid="stChatInput"] textarea::placeholder {
+            color: #72767d !important;
+        }
+
+        /* 포커스 되었을 때 테두리 강조 (선택 사항) */
+        div[data-testid="stChatInput"] > div:focus-within {
+            border-color: #72767d !important;
+            box-shadow: none !important; /* Streamlit 기본 붉은/파란 글로우 제거 */
+        }
+
+        /* 전송 버튼 스타일 (선택 사항 - 보통 아이콘이라 색상만 조정) */
+        div[data-testid="stChatInput"] button {
+            color: #b9bbbe !important;
+        }
+        div[data-testid="stChatInput"] button:hover {
+            color: #dcddde !important;
         }
         
         /* 선택 박스 및 라디오 버튼 스타일 수정 시도 (일부 적용 제한될 수 있음) */
