@@ -943,7 +943,7 @@ elif selection == "🤖 AI 모델 테스팅":
                 prompt_context += "\nBased on the technical indicators provided (RSI, MA Disparity, Volatility, Momentum), act as a Quantitative Analyst and explain WHY the model likely selected these stocks. Focus on the quantitative rationale (e.g., 'Oversold condition', 'Momentum breakout'). Write in Korean."
                 
                 try:
-                    insight_model = genai.GenerativeModel("gemini-pro")
+                    insight_model = genai.GenerativeModel("gemini-3-flash-preview")
                     response = insight_model.generate_content(prompt_context)
                     insight_text = response.text
                     
