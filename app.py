@@ -82,7 +82,7 @@ model = genai.GenerativeModel(
 )
 
 # 4. 웹 화면 UI 구성 (Streamlit)
-st.set_page_config(page_title="미래에셋 로보 챗봇", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="ㄹ로보어드바이저 챗봇", page_icon="🤖", layout="wide")
 
 # OP.GG 스타일 커스텀 CSS 적용 (Light Theme)
 st.markdown(
@@ -210,7 +210,7 @@ with st.sidebar:
     selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
-    st.title("🤖 미래에셋 로보어드바이저 상담")
+    st.title("🤖 로보어드바이저 상담")
     st.caption("FAQ 데이터를 기반으로 AI가 답변해 드립니다.")
 
     if "messages" not in st.session_state:
