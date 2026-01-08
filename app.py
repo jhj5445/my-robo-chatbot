@@ -7,6 +7,12 @@ import streamlit.components.v1 as components
 import yfinance as yf
 import plotly.express as px
 import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error
+import lightgbm as lgb
+import numpy as np
 
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
@@ -216,7 +222,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
     st.title("🤖 로보어드바이저 상담")
@@ -613,3 +619,265 @@ if selection == "📈 전략 실험실 (Beta)":
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.error("분석된 결과가 없습니다. 티커를 확인해주세요.")
+
+elif selection == "🤖 AI 모델 테스팅":
+    st.title("🤖 AI 트레이딩 모델 연구소")
+    st.caption("과거 데이터로 머신러닝 모델을 학습시켜 미래 수익률을 예측하고 검증합니다.")
+
+    # 1. 설정
+    with st.expander("⚙️ 모델링 설정", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            universe_preset = st.selectbox(
+                "분석 대상 유니버스", 
+                ["직접 입력", "NASDAQ Top 10 (Demo)", "Tech Giants (M7)"]
+            )
+            if universe_preset == "직접 입력":
+                tickers_input = st.text_input("종목 코드 입력 (쉼표 구분)", "AAPL, MSFT, GOOGL, AMZN, NVDA")
+                tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+            elif universe_preset == "Tech Giants (M7)":
+                tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
+                st.info(f"선택된 종목: {', '.join(tickers)}")
+            else: # NASDAQ Top 10 Demo
+                tickers = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "COST", "PEP"]
+                st.info(f"선택된 종목: {', '.join(tickers)}")
+
+        with col2:
+            model_type = st.selectbox("사용할 AI 모델", ["Linear Regression (선형회귀)", "LightGBM (트리 부스팅)", "SVM (Support Vector Machine)"])
+    
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            train_start = st.date_input("학습 시작일", pd.to_datetime("2020-01-01"))
+        with col_d2:
+            test_start = st.date_input("테스트 시작일 (Backtest Start)", pd.to_datetime("2023-01-01"))
+
+    # 2. 실행
+    if st.button("🧠 AI 모델 학습 및 백테스팅 시작"):
+        status_text = st.empty()
+        progress_bar = st.progress(0)
+        
+        # A. 데이터 수집 및 피처 엔지니어링
+        status_text.text("데이터 다운로드 및 피처 생성 중...")
+        
+        full_data = {}
+        valid_tickers = []
+        
+        # 전체 기간 설정
+        end_date = pd.to_datetime("today")
+        
+        for i, ticker in enumerate(tickers):
+            try:
+                # 넉넉하게 받아서 이평선 계산
+                df = yf.download(ticker, start=train_start - pd.Timedelta(days=100), end=end_date, progress=False)
+                
+                # MultiIndex 처리
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                
+                # 컬럼 보정
+                if 'Adj Close' not in df.columns:
+                    if 'Close' in df.columns:
+                        df['Adj Close'] = df['Close']
+                    else:
+                        continue
+                
+                df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
+                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] # 편의상 변경
+                
+                # Feature Engineering
+                # 1. 이동평균 이격도
+                df['MA5'] = df['Close'].rolling(window=5).mean()
+                df['MA20'] = df['Close'].rolling(window=20).mean()
+                df['MA60'] = df['Close'].rolling(window=60).mean()
+                df['Disparity_5'] = df['Close'] / df['MA5']
+                df['Disparity_20'] = df['Close'] / df['MA20']
+                
+                # 2. RSI
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                df['RSI'] = 100 - (100 / (1 + rs))
+                
+                # 3. 변동성
+                df['Volatility'] = df['Close'].pct_change().rolling(20).std()
+                
+                # 4. 모멘텀 (Ref: 1달 전 대비 수익률)
+                df['Momentum_1M'] = df['Close'].pct_change(20)
+                
+                # Label (Target): 다음날 수익률 (Shift -1)
+                df['Next_Return'] = df['Close'].pct_change().shift(-1)
+                
+                df.dropna(inplace=True)
+                
+                if not df.empty:
+                    full_data[ticker] = df
+                    valid_tickers.append(ticker)
+                    
+            except Exception as e:
+                pass
+            
+            progress_bar.progress((i + 1) / len(tickers) * 0.3)
+
+        if not valid_tickers:
+            st.error("유효한 데이터가 없습니다.")
+            st.stop()
+            
+        # B. 모델 학습
+        status_text.text(f"{model_type} 모델 학습 중...")
+        
+        # 전체 데이터를 하나의 학습셋으로 병합 (Global Model)
+        # Train: ~ test_start 전까지
+        # Test: test_start ~
+        
+        X_train_all = []
+        y_train_all = []
+        
+        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
+        
+        test_datasets = {} # 종목별 테스트 데이터 저장
+        
+        for ticker in valid_tickers:
+            df = full_data[ticker]
+            train_mask = df.index < pd.to_datetime(test_start)
+            test_mask = df.index >= pd.to_datetime(test_start)
+            
+            train_df = df[train_mask]
+            test_df = df[test_mask]
+            
+            if not train_df.empty:
+                X_train_all.append(train_df[feature_cols].values)
+                y_train_all.append(train_df['Next_Return'].values)
+            
+            if not test_df.empty:
+                test_datasets[ticker] = test_df
+        
+        if not X_train_all:
+            st.error("학습 데이터가 부족합니다 기간을 늘려주세요.")
+            st.stop()
+            
+        X_train = np.concatenate(X_train_all)
+        y_train = np.concatenate(y_train_all)
+        
+        # Scaling (SVM/Linear 필수)
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        
+        # Model Fitting
+        if "Linear" in model_type:
+            model = LinearRegression()
+        elif "SVM" in model_type:
+            # SVR은 느릴 수 있으므로 데이터 샘플링 고려, 여기선 그냥 진행
+            if len(X_train) > 10000:
+                st.warning("데이터가 많아 SVM 학습 속도가 느릴 수 있습니다.")
+            model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+        elif "LightGBM" in model_type:
+            model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
+            
+        model.fit(X_train_scaled, y_train)
+        progress_bar.progress(0.7)
+        
+        # C. 예측 및 백테스팅 (Daily Top-K)
+        status_text.text("백테스팅 시뮬레이션 중...")
+        
+        # 테스트 기간의 모든 날짜 인덱스 추출
+        all_test_dates = sorted(list(set().union(*[d.index for d in test_datasets.values()])))
+        
+        strategy_capital = 1.0 # 초기 자본 1.0 (100%)
+        benchmark_capital = 1.0
+        
+        portfolio_curve = []
+        benchmark_curve = []
+        
+        dates = []
+        
+        # 날짜별 반복
+        current_capital = 1.0
+        prev_date = None
+        
+        for date in all_test_dates:
+            # 오늘자 예측 스코어 수집
+            daily_scores = []
+            daily_returns = [] # Benchmark용
+            
+            for ticker in valid_tickers:
+                if ticker in test_datasets and date in test_datasets[ticker].index:
+                    row = test_datasets[ticker].loc[date]
+                    # Feature 추출
+                    feats = row[feature_cols].values.reshape(1, -1)
+                    feats_scaled = scaler.transform(feats)
+                    
+                    # 예측
+                    score = model.predict(feats_scaled)[0]
+                    daily_scores.append((ticker, score, row['Next_Return'])) # Next_Return은 실제 다음날 수익률
+                    daily_returns.append(row['Next_Return'])
+            
+            if not daily_scores:
+                continue
+                
+            # Benchmark Return (Equal Weight)
+            avg_daily_ret = np.mean(daily_returns)
+            benchmark_capital *= (1 + avg_daily_ret)
+            
+            # Strategy: Top 3 매수
+            daily_scores.sort(key=lambda x: x[1], reverse=True) # Score 내림차순
+            top_k = 3
+            selected = daily_scores[:top_k]
+            
+            # Top-K 평균 수익률
+            if selected:
+                strategy_daily_ret = np.mean([x[2] for x in selected])
+            else:
+                strategy_daily_ret = 0.0
+                
+            strategy_capital *= (1 + strategy_daily_ret)
+            
+            portfolio_curve.append(strategy_capital)
+            benchmark_curve.append(benchmark_capital)
+            dates.append(date)
+            
+        progress_bar.progress(1.0)
+        status_text.empty()
+        
+        # D. 결과 시각화
+        results_df = pd.DataFrame({
+            "Date": dates,
+            "AI Model Portfolio": portfolio_curve,
+            "Benchmark (Equal Weight)": benchmark_curve
+        }).set_index("Date")
+        
+        st.success(f"학습 및 백테스팅 완료! (기간: {len(dates)} 거래일)")
+        
+        # 성과 지표
+        total_ret = results_df['AI Model Portfolio'].iloc[-1] - 1
+        bench_ret = results_df['Benchmark (Equal Weight)'].iloc[-1] - 1
+        alpha = total_ret - bench_ret
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("AI 포트폴리오 수익률", f"{total_ret:.2%}", delta=f"{alpha:.2%}")
+        c2.metric("벤치마크 수익률", f"{bench_ret:.2%}")
+        
+        # MDD
+        mdd_series = results_df['AI Model Portfolio'] / results_df['AI Model Portfolio'].cummax() - 1
+        mdd = mdd_series.min()
+        c3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
+        
+        # 차트
+        st.subheader("📈 백테스팅 결과: AI Top-3 전략 vs 시장")
+        fig = px.line(results_df, title=f"{model_type} 기반 Top-3 종목 추천 전략 성과")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Feature Importance (선형, LGBM만)
+        if "Linear" in model_type or "LightGBM" in model_type:
+            st.subheader("🔍 모델이 중요하게 본 지표 (Feature Importance)")
+            if "Linear" in model_type:
+                importance = np.abs(model.coef_)
+            else:
+                importance = model.feature_importances_
+                
+            imp_df = pd.DataFrame({
+                "Feature": feature_cols,
+                "Importance": importance
+            }).sort_values(by="Importance", ascending=False)
+            
+            st.bar_chart(imp_df.set_index("Feature"))
