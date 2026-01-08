@@ -1,5 +1,2 @@
 streamlit
 google-generativeai
-os
-glob
-re
