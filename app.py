@@ -280,7 +280,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
     st.title("🤖 로보어드바이저 상담")
@@ -1358,4 +1358,176 @@ elif selection == "⚖️ 포트폴리오 최적화":
                 )
                 
                 st.plotly_chart(fig_ef, use_container_width=True)
+
+elif selection == "🔍 기술적 패턴 스캐너":
+    st.title("🔍 기술적 패턴 스캐너 (Technical Pattern Scanner)")
+    st.caption("전체 시장을 스캔하여 '지금 당장' 의미 있는 차트 패턴이 발생한 종목을 포착합니다.")
+
+    # 1. 스캔 대상 설정
+    with st.expander("📡 스캔 설정 (Universe)", expanded=True):
+        universe_preset = st.selectbox(
+            "스캔 대상 그룹 선택",
+            ["NASDAQ Top 30 (Big Tech)", "Dow Jones 30 (Blue Chips)", "S&P 100 (Large Cap)", "직접 입력"]
+        )
+
+        if universe_preset == "직접 입력":
+            tickers_input = st.text_input("종목 코드 입력 (쉼표 구분)", "AAPL, MSFT, TSLA, NVDA, AMD, INTC, QCOM")
+            scan_tickers = [t.strip().upper() for t in tickers_input.split(',') if t.strip()]
+        elif universe_preset == "NASDAQ Top 30 (Big Tech)":
+            scan_tickers = [
+                "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "COST", "PEP",
+                "CSCO", "NFLX", "AMD", "ADBE", "TMUS", "INTC", "QCOM", "TXN", "AMGN", "HON",
+                "AMAT", "INTU", "SBUX", "ADP", "BKNG", "GILD", "ISRG", "MDLZ", "REGN", "VRTX"
+            ]
+        elif universe_preset == "Dow Jones 30 (Blue Chips)":
+            scan_tickers = [
+                "MMM", "AXP", "AMGN", "AAPL", "BA", "CAT", "CVX", "CSCO", "KO", "DIS", 
+                "DOW", "GS", "HD", "HON", "IBM", "INTC", "JNJ", "JPM", "MCD", "MRK", 
+                "MSFT", "NKE", "PG", "CRM", "TRV", "UNH", "VZ", "V", "WMT", "WBA" # WBA is replaced by AMZN in DJIA recently but keep list simple for now or update
+            ]
+             # Note: Dow components change. 
+        elif universe_preset == "S&P 100 (Large Cap)":
+            # Sample list
+            scan_tickers = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B", "LLY", "V", "TSM", "UNH", "XOM", "JPM"] 
+            st.info("Demo: 속도를 위해 주요 14개 종목만 스캔합니다.")
+            
+        st.write(f"총 {len(scan_tickers)}개 종목을 분석합니다.")
+
+    # 2. 스캔 실행
+    if st.button("🛰️ 패턴 스캔 시작"):
+        results = []
+        
+        status_text = st.empty()
+        progress_bar = st.progress(0)
+        
+        # 데이터 일괄 다운로드 (속도 개선)
+        status_text.text("데이터 일괄 다운로드 중...")
+        
+        # 기간: 넉넉히 120일 (MA60 계산용)
+        start_date_scan = pd.to_datetime("today") - pd.Timedelta(days=200)
+        
+        try:
+            # yfinance batch download
+            # threads=True is default
+            raw_data = yf.download(scan_tickers, start=start_date_scan, group_by='ticker', progress=False)
+        except Exception as e:
+            st.error(f"데이터 다운로드 실패: {e}")
+            st.stop()
+            
+        status_text.text("패턴 분석 중...")
+        
+        for i, ticker in enumerate(scan_tickers):
+            try:
+                # 데이터 추출
+                if len(scan_tickers) == 1:
+                    df = raw_data
+                else:
+                    df = raw_data[ticker]
+                
+                # MultiIndex 컬럼 정리
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                
+                # 유효성 검사
+                if df.empty or 'Close' not in df.columns:
+                    continue
+                    
+                df = df.dropna(subset=['Close'])
+                if len(df) < 60: # 최소 데이터 요구량
+                    continue
+                
+                # ---------------- [패턴 인식 엔진] ----------------
+                detected_patterns = []
+                
+                # 최신 데이터
+                curr_price = df['Close'].iloc[-1]
+                prev_price = df['Close'].iloc[-2]
+                
+                # 1. 이평선 (Golden/Death Cross)
+                ma20 = df['Close'].rolling(20).mean()
+                ma60 = df['Close'].rolling(60).mean()
+                
+                curr_ma20 = ma20.iloc[-1]
+                curr_ma60 = ma60.iloc[-1]
+                prev_ma20 = ma20.iloc[-2]
+                prev_ma60 = ma60.iloc[-2]
+                
+                # 골든 크로스: 어제는 20 < 60 이었는데 오늘 20 > 60
+                if prev_ma20 < prev_ma60 and curr_ma20 > curr_ma60:
+                    detected_patterns.append("✨ Golden Cross (매수 신호)")
+                
+                # 데드 크로스
+                if prev_ma20 > prev_ma60 and curr_ma20 < curr_ma60:
+                    detected_patterns.append("💀 Death Cross (매도 신호)")
+                    
+                # 2. RSI (과매수/과매도)
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+                curr_rsi = rsi.iloc[-1]
+                
+                if curr_rsi < 30:
+                    detected_patterns.append(f"🟢 RSI 과매도 ({curr_rsi:.1f}) - 반등 기대")
+                elif curr_rsi > 70:
+                    detected_patterns.append(f"🔴 RSI 과매수 ({curr_rsi:.1f}) - 조정 주의")
+                    
+                # 3. 볼린저 밴드 (돌파)
+                std = df['Close'].rolling(20).std()
+                upper = ma20 + (std * 2)
+                lower = ma20 - (std * 2)
+                
+                curr_upper = upper.iloc[-1]
+                curr_lower = lower.iloc[-1]
+                
+                if curr_price < curr_lower:
+                    detected_patterns.append("📉 볼린저 하단 돌파 (과매도)")
+                elif curr_price > curr_upper:
+                    detected_patterns.append("📈 볼린저 상단 돌파 (강한 상승세)")
+                
+                # ------------------------------------------------
+                
+                if detected_patterns:
+                    # 결과 저장
+                    results.append({
+                        "Ticker": ticker,
+                        "Price": f"${curr_price:.2f}",
+                        "Change": f"{(curr_price - prev_price)/prev_price:.2%}",
+                        "Patterns": detected_patterns
+                    })
+                    
+            except Exception as e:
+                pass
+            
+            progress_bar.progress((i + 1) / len(scan_tickers))
+            
+        status_text.empty()
+        progress_bar.empty()
+        
+        # 결과 출력
+        st.divider()
+        if results:
+            st.success(f"총 {len(results)}개 종목에서 특이 패턴이 발견되었습니다!")
+            
+            # 보기 좋게 카드 형태로 출력 혹은 데이터프레임
+            for item in results:
+                with st.container():
+                    c1, c2, c3 = st.columns([1, 1.5, 3])
+                    c1.subheader(item['Ticker'])
+                    c2.metric("현재가", item['Price'], item['Change'])
+                    
+                    # 뱃지 형태로 패턴 표시
+                    with c3:
+                        st.write("**발견된 패턴:**")
+                        for pat in item['Patterns']:
+                            if "매수" in pat or "반등" in pat or "Golden" in pat:
+                                st.success(pat)
+                            elif "매도" in pat or "주의" in pat or "Death" in pat:
+                                st.error(pat)
+                            else:
+                                st.info(pat)
+                    st.divider()
+        else:
+            st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
 
