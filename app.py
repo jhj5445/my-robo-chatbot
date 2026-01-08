@@ -965,7 +965,7 @@ elif selection == "🤖 AI 모델 테스팅":
                             }
                             
                             # 화면 표시 (리로드 필요 없이 바로 표시)
-                            st.experimental_rerun()
+                            st.rerun()
                             
                         except Exception as e:
                             st.error(f"Gemini 분석 중 오류: {e}")
