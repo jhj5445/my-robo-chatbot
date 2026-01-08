@@ -353,9 +353,12 @@ if selection == "📄 Macro Takling Point":
     st.caption("각 지수와 날짜별 리포트를 확인하세요.")
     
     # 비밀번호 보호 기능 추가
-    password = st.text_input("접근 암호를 입력하세요", type="password")
+    input_password = st.text_input("접근 암호를 입력하세요", type="password")
     
-    if password != "3363542":
+    # Secrets에서 설정한 비밀번호와 비교
+    correct_password = st.secrets["MACRO_PAGE_PASSWORD"]
+    
+    if input_password != correct_password:
         st.warning("🔒 올바른 암호를 입력해야 내용을 볼 수 있습니다.")
         st.stop()
         
