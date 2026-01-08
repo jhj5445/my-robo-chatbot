@@ -347,7 +347,7 @@ elif selection == "📄 Macro Takling Point":
                 components.html(
                     f"""
                     <script>
-                        // 리포트 키가 바뀔 때마다 실행
+                        // 리포트 키가 바뀔 때마다 실행: {current_report_key}
                         // 앵커(scroll-to-top-anchor)를 찾아서 scrollIntoView() 호출
                         // 렌더링 타이밍 문제를 피하기 위해 다중 시도 (Burst)
                         function forceScroll() {{
