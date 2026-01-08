@@ -881,3 +881,76 @@ elif selection == "🤖 AI 모델 테스팅":
             }).sort_values(by="Importance", ascending=False)
             
             st.bar_chart(imp_df.set_index("Feature"))
+
+        # E. 오늘의 추천 종목 (AI Pick) & Gemini Insight
+        st.divider()
+        st.subheader("🔮 AI & Gemini: 오늘의 원픽 (Top 3)")
+        
+        with st.spinner("최신 데이터로 예측하고 Gemini에게 이유를 물어보는 중..."):
+            # 1. 최신 데이터(오늘자)로 예측 수행
+            today_scores = []
+            
+            for ticker in valid_tickers:
+                try:
+                    df = full_data[ticker]
+                    # 가장 최근 데이터 행 가져오기
+                    last_row = df.iloc[[-1]] 
+                    last_date = last_row.index[0].strftime('%Y-%m-%d')
+                    
+                    # Feature 추출 및 스케일링
+                    feats = last_row[feature_cols].values
+                    feats_scaled = scaler.transform(feats)
+                    
+                    # 예측
+                    score = model.predict(feats_scaled)[0]
+                    
+                    # Feature 값 저장 (Gemini 설명용)
+                    feat_dict = {
+                        "Disparity_5": f"{last_row['Disparity_5'].values[0]:.4f}",
+                        "Disparity_20": f"{last_row['Disparity_20'].values[0]:.4f}",
+                        "RSI": f"{last_row['RSI'].values[0]:.2f}",
+                        "Volatility": f"{last_row['Volatility'].values[0]:.4f}",
+                        "Momentum_1M": f"{last_row['Momentum_1M'].values[0]:.2%}"
+                    }
+                    
+                    today_scores.append({
+                        "Ticker": ticker,
+                        "Score": score,
+                        "Date": last_date,
+                        "Features": feat_dict
+                    })
+                except Exception as e:
+                    pass
+            
+            # Top 3 선정
+            today_scores.sort(key=lambda x: x['Score'], reverse=True)
+            top_3 = today_scores[:3]
+            
+            if top_3:
+                # 2. 결과 카드 표시
+                c1, c2, c3 = st.columns(3)
+                cols = [c1, c2, c3]
+                
+                prompt_context = f"Model Type: {model_type}\nTarget Strategy: Buy Top 3 scores daily.\n\nTop 3 Recommended Stocks:\n"
+                
+                for i, item in enumerate(top_3):
+                    with cols[i]:
+                        st.info(f"**{i+1}위: {item['Ticker']}**\n\nAI Score: {item['Score']:.4f}")
+                        # Gemini 프롬프트 구성
+                        prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.4f})\n   - Indicators: {item['Features']}\n"
+                
+                # 3. Gemini Insight 생성
+                prompt_context += "\nBased on the technical indicators provided (RSI, MA Disparity, Volatility, Momentum), act as a Quantitative Analyst and explain WHY the model likely selected these stocks. Focus on the quantitative rationale (e.g., 'Oversold condition', 'Momentum breakout'). Write in Korean."
+                
+                try:
+                    insight_model = genai.GenerativeModel("gemini-pro")
+                    response = insight_model.generate_content(prompt_context)
+                    insight_text = response.text
+                    
+                    st.success("🤖 **Gemini's Insight**")
+                    st.markdown(insight_text)
+                    
+                except Exception as e:
+                    st.error(f"Gemini 분석 중 오류: {e}")
+            else:
+                st.warning("예측 가능한 데이터가 없습니다.")
