@@ -281,7 +281,7 @@ if selection == "🤖 챗봇":
             except Exception as e:
                 st.error(f"오류가 발생했습니다: {e}")
 
-elif selection == "📄 Macro Takling Point":
+if selection == "📄 Macro Takling Point":
     st.title("📄 Macro Talking Point")
     st.caption("각 지수와 날짜별 리포트를 확인하세요.")
 
@@ -400,3 +400,128 @@ elif selection == "📄 Macro Takling Point":
                 
             except Exception as e:
                 st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+
+if selection == "📈 전략 실험실 (Beta)":
+    st.title("📈 나만의 주식 전략 실험실 (Beta)")
+    st.caption("Gemini와 함께 아이디어를 코드로 구현하고, 과거 데이터로 검증해보세요.")
+
+    # 1. 설정 입력
+    with st.expander("⚙️ 백테스팅 설정", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            ticker = st.text_input("종목 코드 (Ticker)", value="SPY")
+        with col2:
+            start_date = st.date_input("시작일", value=pd.to_datetime("2023-01-01"))
+        with col3:
+            end_date = st.date_input("종료일", value=pd.to_datetime("today"))
+
+    # 2. 전략 대화 인터페이스
+    st.subheader("💡 어떤 전략을 테스트해볼까요?")
+    strategy_text = st.text_area(
+        "자연어로 전략을 설명해주세요.", 
+        height=100, 
+        placeholder="예: 20일 이동평균선이 60일 이동평균선을 골든크로스 하면 매수하고, 데드크로스 하면 매도해줘."
+    )
+
+    if st.button("🚀 전략 분석 실행"):
+        if not strategy_text:
+            st.warning("전략 내용을 입력해주세요!")
+        else:
+            with st.spinner("1. 데이터 다운로드 및 전략 코드 생성 중..."):
+                # A. 데이터 다운로드
+                try:
+                    df = yf.download(ticker, start=start_date, end=end_date)
+                    if df.empty:
+                        st.error("데이터를 불러올 수 없습니다. 티커를 확인해주세요.")
+                        st.stop()
+                    
+                    df['Return'] = df['Adj Close'].pct_change()
+                    df.dropna(inplace=True)
+                except Exception as e:
+                    st.error(f"데이터 다운로드 오류: {e}")
+                    st.stop()
+
+                # B. Gemini에게 코드 생성 요청
+                # 프롬프트 엔지니어링: 명확한 함수 시그니처 요구
+                prompt = f"""
+                You are a Python Quant Developer. 
+                Write a Python function named `calculate_signals` that takes a pandas DataFrame `df` as input.
+                The DataFrame `df` has columns: 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'.
+                
+                User Strategy Description: "{strategy_text}"
+                
+                Requirements:
+                1. Calculate necessary indicators (e.g., MA, RSI) using columns in `df`.
+                2. Return the DataFrame `df` with a new column 'Signal'.
+                3. 'Signal' must be: 1 (Buy/Hold), -1 (Sell/Short), or 0 (Neutral).
+                4. Do NOT import libraries inside the function (assume pandas as pd, numpy as np are available).
+                5. Provide ONLY the function code (no markdown, no explanations).
+                """
+                
+                try:
+                    # 코드 생성용 별도 모델 호출 (또는 기존 모델 재사용)
+                    code_model = genai.GenerativeModel("gemini-2.0-flash-exp") 
+                    response = code_model.generate_content(prompt)
+                    generated_code = response.text
+                    
+                    # 마크다운 코드 블록 제거
+                    cleaned_code = generated_code.replace("```python", "").replace("```", "")
+                    
+                except Exception as e:
+                    st.error(f"AI 코드 생성 실패: {e}")
+                    st.stop()
+
+            with st.spinner("2. 백테스팅 시뮬레이션 중..."):
+                try:
+                    # C. 코드 실행 (Sandbox - 주의 필요)
+                    # st.write(cleaned_code) # 디버깅용
+                    
+                    # 안전을 위해 제한된 네임스페이스 사용 가능하지만, 여기서는 기능 구현 우선
+                    local_env = {}
+                    exec(cleaned_code, globals(), local_env)
+                    calculate_signals = local_env['calculate_signals']
+                    
+                    # D. 전략 적용
+                    df = calculate_signals(df)
+                    
+                    # E. 수익률 계산 (Strategy Return)
+                    # Signal은 '오늘' 나오면 '내일' 시초가 혹은 종가에 진입한다고 가정 (여기서는 간단히 종가-종가 수익률 적용)
+                    # 전날의 신호(shift(1))가 오늘의 수익률에 영향
+                    df['Strategy_Return'] = df['Signal'].shift(1) * df['Return']
+                    
+                    # 누적 수익률
+                    df['Cumulative_Market'] = (1 + df['Return']).cumprod()
+                    df['Cumulative_Strategy'] = (1 + df['Strategy_Return'].fillna(0)).cumprod()
+                    
+                    # F. 결과 시각화
+                    # 그래프 그리기
+                    chart_data = df[['Cumulative_Market', 'Cumulative_Strategy']]
+                    chart_data.columns = [f'{ticker} (Buy&Hold)', 'AI Strategy']
+                    
+                    st.success("분석 완료!")
+                    
+                    # 1. 차트
+                    fig = px.line(chart_data, title=f"백테스팅 결과: {ticker} vs AI 전략")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 2. 성과 지표
+                    total_return = df['Cumulative_Strategy'].iloc[-1] - 1
+                    market_return = df['Cumulative_Market'].iloc[-1] - 1
+                    
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    col_m1.metric("전략 최종 수익률", f"{total_return:.2%}", delta=f"{total_return-market_return:.2%}")
+                    col_m2.metric("벤치마크 수익률", f"{market_return:.2%}")
+                    
+                    # MDD 계산
+                    drawdown = df['Cumulative_Strategy'] / df['Cumulative_Strategy'].cummax() - 1
+                    mdd = drawdown.min()
+                    col_m3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
+
+                    # 3. 생성된 코드 확인
+                    with st.expander("🛠️ AI가 작성한 파이썬 코드 보기"):
+                        st.code(cleaned_code, language='python')
+
+                except Exception as e:
+                    st.error(f"백테스팅 실행 중 오류가 발생했습니다.\nAI가 생성한 코드에 문제가 있을 수 있습니다.\n에러 내용: {e}")
+                    with st.expander("오류가 발생한 코드 확인"):
+                        st.code(cleaned_code, language='python')
