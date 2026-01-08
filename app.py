@@ -299,11 +299,7 @@ elif selection == "📄 Macro Takling Point":
         reports.sort(key=lambda x: x["date"], reverse=True)
         return reports
 
-    reports = get_reports()
 
-    if not reports:
-        st.warning("표시할 리포트 파일이 없습니다.")
-    else:
     reports = get_reports()
 
     if not reports:
