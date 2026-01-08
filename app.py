@@ -344,24 +344,25 @@ elif selection == "📄 Macro Takling Point":
             if st.session_state["last_viewed_report"] != current_report_key:
                 st.session_state["last_viewed_report"] = current_report_key
                 components.html(
-                    """
+                    f"""
                     <script>
-                        setTimeout(function() {
-                            try {
+                        // 리포트 키: {current_report_key} (이 키가 변경될 때마다 스크립트가 새로 실행됨)
+                        setTimeout(function() {{
+                            try {{
                                 var targets = [
                                     window.parent.document.querySelector('[data-testid="stAppViewContainer"]'),
                                     window.parent.document.querySelector('.main'),
                                     window.parent.document.documentElement,
                                     window.parent.document.body
                                 ];
-                                targets.forEach(function(t) {
-                                    if (t) {
+                                targets.forEach(function(t) {{
+                                    if (t) {{
                                         t.scrollTop = 0;
-                                        t.scrollTo({top: 0, behavior: 'auto'});
-                                    }
-                                });
-                            } catch (e) { console.log(e); }
-                        }, 100); // 0.1초 딜레이로 렌더링 후 실행 보장
+                                        t.scrollTo({{top: 0, behavior: 'auto'}});
+                                    }}
+                                }});
+                            }} catch (e) {{ console.log(e); }}
+                        }}, 150); 
                     </script>
                     """,
                     height=0,
