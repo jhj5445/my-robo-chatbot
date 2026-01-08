@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 import lightgbm as lgb
 import numpy as np
+import scipy.optimize as sco
 
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
@@ -279,7 +280,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
     st.title("🤖 로보어드바이저 상담")
@@ -1177,3 +1178,184 @@ elif selection == "🤖 AI 모델 테스팅":
                             st.error(f"Gemini 분석 중 오류: {e}")
                     else:
                         st.warning("데이터 부족으로 예측할 수 없습니다.")
+
+elif selection == "⚖️ 포트폴리오 최적화":
+    st.title("⚖️ 포트폴리오 최적화 (Portfolio Optimizer)")
+    st.caption("현대 포트폴리오 이론(MPT)에 기반하여 최적의 자산 배분 비율을 제안합니다.")
+
+    # 1. 사이드바 설정
+    with st.sidebar:
+        st.header("⚙️ 최적화 설정")
+        tickers_string = st.text_area(
+            "포트폴리오 구성 종목 (쉼표 구분)", 
+            value="AAPL, MSFT, GOOGL, AMZN, TSLA, SPY, GLD, TLT",
+            height=100
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date_opt = st.date_input("분석 시작일", pd.to_datetime("2020-01-01"))
+        with col2:
+            end_date_opt = st.date_input("분석 종료일", pd.to_datetime("today"))
+            
+        risk_free_rate = st.number_input("무위험 이자율 (%)", value=3.5, step=0.1) / 100
+
+    # 2. 데이터 다운로드 및 처리
+    st.info("💡 **Efficient Frontier (효율적 투자선)**: 동일한 위험 수준에서 최대 수익을 내거나, 동일한 기대 수익에서 최소 위험을 갖는 포트폴리오의 집합입니다.")
+    
+    if st.button("🚀 포트폴리오 최적화 실행"):
+        tickers = [t.strip().upper() for t in tickers_string.split(',') if t.strip()]
+        
+        if len(tickers) < 2:
+            st.warning("최소 2개 이상의 종목을 입력해주세요.")
+            st.stop()
+            
+        with st.spinner("데이터 수집 및 최적화 계산 중..."):
+            # 데이터 수집
+            data = pd.DataFrame()
+            valid_tickers = []
+            
+            for t in tickers:
+                try:
+                    df = yf.download(t, start=start_date_opt, end=end_date_opt, progress=False)
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                        
+                    if 'Adj Close' in df.columns:
+                        series = df['Adj Close']
+                    elif 'Close' in df.columns:
+                        series = df['Close']
+                    else:
+                        continue
+                        
+                    data[t] = series
+                    valid_tickers.append(t)
+                except Exception as e:
+                    pass
+            
+            if data.empty or len(valid_tickers) < 2:
+                st.error("유효한 데이터가 충분하지 않습니다. 종목 코드를 확인해주세요.")
+                st.stop()
+                
+            # 결측치 처리
+            data = data.dropna()
+            
+            # 수익률 계산
+            returns = data.pct_change().dropna()
+            mean_returns = returns.mean() * 252 # 연간 기대 수익률
+            cov_matrix = returns.cov() * 252 # 연간 공분산
+            
+            # ---------------------------------------------------------
+            # 포트폴리오 최적화 함수 (Scipy)
+            # ---------------------------------------------------------
+            def portfolio_annualised_performance(weights, mean_returns, cov_matrix):
+                returns = np.sum(mean_returns * weights)
+                std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+                return std, returns
+
+            def neg_sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate):
+                p_var, p_ret = portfolio_annualised_performance(weights, mean_returns, cov_matrix)
+                return -(p_ret - risk_free_rate) / p_var
+
+            # 제약 조건
+            constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+            bounds = tuple((0.0, 1.0) for asset in range(len(valid_tickers)))
+            
+            # 초기값 (균등 배분)
+            num_assets = len(valid_tickers)
+            init_guess = num_assets * [1. / num_assets,]
+            
+            # 최적화 실행
+            opt_result = sco.minimize(
+                neg_sharpe_ratio, 
+                init_guess, 
+                args=(mean_returns, cov_matrix, risk_free_rate), 
+                method='SLSQP', 
+                bounds=bounds, 
+                constraints=constraints
+            )
+            
+            max_sharpe_weights = opt_result['x']
+            max_sharpe_std, max_sharpe_ret = portfolio_annualised_performance(max_sharpe_weights, mean_returns, cov_matrix)
+            max_sharpe_sharpe = (max_sharpe_ret - risk_free_rate) / max_sharpe_std
+            
+            # ---------------------------------------------------------
+            # 결과 시각화
+            # ---------------------------------------------------------
+            
+            # 1. 파이 차트 (최적 비중)
+            st.divider()
+            
+            weights_df = pd.DataFrame({
+                "Ticker": valid_tickers,
+                "Weight": max_sharpe_weights
+            })
+            weights_df = weights_df[weights_df['Weight'] > 0.0001] # 0% 제외
+            weights_df['Weight_Pct'] = (weights_df['Weight'] * 100).round(2)
+            weights_df = weights_df.sort_values(by="Weight", ascending=False)
+            
+            c1, c2 = st.columns([1, 1])
+            
+            with c1:
+                st.subheader("🎯 최적 포트폴리오 비중")
+                st.caption(f"Max Sharpe Ratio: {max_sharpe_sharpe:.4f}")
+                
+                fig_pie = px.pie(
+                    weights_df, 
+                    values='Weight', 
+                    names='Ticker', 
+                    title='Optimal Asset Allocation',
+                    hole=0.4
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+            with c2:
+                st.subheader("📊 예상 성과 (연간)")
+                st.metric("기대 수익률 (Annual Return)", f"{max_sharpe_ret:.2%}")
+                st.metric("변동성 (Annual Volatility)", f"{max_sharpe_std:.2%}")
+                st.metric("샤프 비율 (Sharpe Ratio)", f"{max_sharpe_sharpe:.4f}")
+                
+                st.markdown("#### 보유 비중 상세")
+                st.dataframe(weights_df[['Ticker', 'Weight_Pct']].style.format({"Weight_Pct": "{:.2f}%"}), hide_index=True)
+
+            # 2. 효율적 투자선 차트 (시뮬레이션)
+            st.subheader("📈 효율적 투자선 (Efficient Frontier)")
+            
+            with st.spinner("시뮬레이션 차트 생성 중..."):
+                num_portfolios = 5000
+                results = np.zeros((3, num_portfolios))
+                
+                for i in range(num_portfolios):
+                    weights = np.random.random(num_assets)
+                    weights /= np.sum(weights)
+                    
+                    p_std, p_ret = portfolio_annualised_performance(weights, mean_returns, cov_matrix)
+                    results[0,i] = p_std
+                    results[1,i] = p_ret
+                    results[2,i] = (p_ret - risk_free_rate) / p_std
+                
+                sim_df = pd.DataFrame({
+                    "Volatility": results[0,:],
+                    "Return": results[1,:],
+                    "Sharpe": results[2,:]
+                })
+                
+                fig_ef = px.scatter(
+                    sim_df, x="Volatility", y="Return", color="Sharpe",
+                    title="Efficient Frontier Simulation (5,000 Portfolios)",
+                    color_continuous_scale='Viridis',
+                    labels={"Volatility": "리스크 (표준편차)", "Return": "기대 수익률"}
+                )
+                
+                # 최적점 표시
+                fig_ef.add_scatter(
+                    x=[max_sharpe_std], y=[max_sharpe_ret], 
+                    mode='markers+text', 
+                    marker=dict(color='red', size=15, symbol='star'),
+                    name='Max Sharpe Portfolio',
+                    text=['★ Max Sharpe'], textposition="top left"
+                )
+                
+                st.plotly_chart(fig_ef, use_container_width=True)
+
