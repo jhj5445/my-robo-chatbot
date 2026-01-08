@@ -345,13 +345,11 @@ elif selection == "📄 Macro Takling Point":
                     
                     # Iframe 방식(components.html) 대신 st.markdown을 사용하여 자연스러운 스크롤 구현
                     # 리포트 스타일이 앱 스타일과 충돌하지 않도록 별도 div로 감싸고 백그라운드 지정
-                    st.markdown(
-                        f"""
-                        <div style="background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                            {html_content}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+                    # 주의: f-string 사용 시 HTML 내의 CSS/JS 중괄호({})와 충돌하므로 문자열 합치기 사용
+                    wrapper_start = """<div style="background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">"""
+                    wrapper_end = "</div>"
+                    
+                    # HTML 파일이 이미 완성된 문서일 수 있으나, 브라우저가 div 안에 렌더링하도록 처리
+                    st.markdown(wrapper_start + html_content + wrapper_end, unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
