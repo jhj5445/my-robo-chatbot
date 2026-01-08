@@ -84,99 +84,96 @@ model = genai.GenerativeModel(
 # 4. 웹 화면 UI 구성 (Streamlit)
 st.set_page_config(page_title="미래에셋 로보 챗봇", page_icon="🤖", layout="wide")
 
-# Discord 스타일 커스텀 CSS 적용
+# OP.GG 스타일 커스텀 CSS 적용 (Light Theme)
 st.markdown(
     """
     <style>
-        /* 기본 폰트 설정 (웹 폰트 예시) */
+        /* 기본 폰트 설정 */
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
         
         html, body, [class*="css"] {
             font-family: 'Noto Sans KR', sans-serif;
         }
 
-        /* 메인 배경색 - Discord 채팅창 색상 */
+        /* 메인 배경색 - OP.GG의 밝은 회색/블루 톤 */
         .stApp {
-            background-color: #36393f;
-            color: #dcddde;
+            background-color: #ecf2f5;
+            color: #23292f; /* 짙은 회색 텍스트 */
         }
 
-        /* 사이드바 배경색 - Discord 채널 리스트 색상 */
+        /* 사이드바 배경색 - OP.GG의 짙은 네이비 (헤더 느낌) */
         [data-testid="stSidebar"] {
-            background-color: #2f3136;
+            background-color: #1c2836;
         }
         
-        /* 헤더 배경색 (투명하게 하거나 사이드바와 맞춤) */
+        /* 사이드바 내 텍스트 색상 조정 */
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] label, [data-testid="stSidebar"] div {
+            color: #ffffff !important;
+        }
+
+        /* 헤더 배경색 */
         [data-testid="stHeader"] {
             background-color: rgba(0,0,0,0);
         }
 
-        /* 제목 및 헤더 텍스트 색상 */
-        h1, h2, h3 {
-            color: #ffffff !important;
+        /* 제목 색상 (OP.GG 브랜드 블루 포인트) */
+        h1 {
+            color: #5383e8 !important;
+            font-weight: 700;
+        }
+        h2, h3 {
+            color: #23292f !important;
         }
 
-        /* 일반 텍스트 색상 */
-        p, div, label {
-            color: #dcddde;
-        }
-
-        /* 채팅 입력창 스타일 수정 */
-        /* 입력창 전체 컨테이너 (둥근 테두리 및 배경) */
+        /* 채팅 입력창 스타일 (화이트 박스) */
         div[data-testid="stChatInput"] > div {
-            background-color: #40444b !important;
-            border-color: #40444b !important;
-            border-radius: 8px;
+            background-color: #ffffff !important;
+            border: 1px solid #dce2f0 !important;
+            border-radius: 4px; /* 살짝 덜 둥글게 */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
 
-        /* 입력창 텍스트 영역 (투명 배경) */
+        /* 입력창 텍스트 영역 */
         div[data-testid="stChatInput"] textarea {
             background-color: transparent !important;
-            color: #ffffff !important; /* 텍스트 색상 (배경 대비 잘 보이게 흰색 변경) */
+            color: #23292f !important; /* 어두운 글씨 */
         }
         
-        /* 플레이스홀더 텍스트 색상 */
+        /* 플레이스홀더 텍스트 */
         div[data-testid="stChatInput"] textarea::placeholder {
-            color: #72767d !important;
+            color: #9aa4af !important;
         }
 
-        /* 포커스 되었을 때 테두리 강조 (선택 사항) */
+        /* 포커스 효과 (브랜드 블루) */
         div[data-testid="stChatInput"] > div:focus-within {
-            border-color: #72767d !important;
-            box-shadow: none !important; /* Streamlit 기본 붉은/파란 글로우 제거 */
+            border-color: #5383e8 !important;
+            box-shadow: 0 0 0 1px #5383e8 !important;
         }
 
-        /* 전송 버튼 스타일 (선택 사항 - 보통 아이콘이라 색상만 조정) */
-        div[data-testid="stChatInput"] button {
-            color: #b9bbbe !important;
-        }
-        div[data-testid="stChatInput"] button:hover {
-            color: #dcddde !important;
-        }
-        
-        /* 선택 박스 및 라디오 버튼 스타일 수정 시도 (일부 적용 제한될 수 있음) */
-        .stSelectbox div[data-baseweb="select"] > div {
-            background-color: #2f3136;
-            color: #dcddde;
-        }
-        
-        /* 코드 블록 스타일 */
-        code {
-            background-color: #2f3136;
-            color: #dcddde;
-            border-radius: 5px;
-        }
-        
-        /* 챗봇 메시지 아바타 스타일 호환 (선택 사항) */
-        
-        /* 스크롤바 커스텀 (Chrome 등) */
-        ::-webkit-scrollbar {
-            width: 8px;
-            background: #2f3136;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #202225;
+        /* 버튼 스타일 (브랜드 블루) */
+        .stButton button {
+            background-color: #5383e8;
+            color: white;
+            border: none;
             border-radius: 4px;
+            font-weight: bold;
+        }
+        .stButton button:hover {
+            background-color: #426cb7;
+            color: white;
+        }
+
+        /* 메시지 박스 스타일 (채팅 풍선 느낌) */
+        .stChatMessage {
+            background-color: transparent;
+        }
+        
+        /* 사용자/AI 메시지 구분감 (선택 사항) */
+        [data-testid="chatAvatarIcon-user"] {
+            background-color: #5383e8;
+        }
+        [data-testid="chatAvatarIcon-assistant"] {
+            background-color: #ffb900; /* AI는 노란색 포인트 */
         }
     </style>
     """,
