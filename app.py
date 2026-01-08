@@ -690,28 +690,50 @@ elif selection == "🤖 AI 모델 테스팅":
                 df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] # 편의상 변경
                 
-                # Feature Engineering
-                # 1. 이동평균 이격도
-                df['MA5'] = df['Close'].rolling(window=5).mean()
-                df['MA20'] = df['Close'].rolling(window=20).mean()
-                df['MA60'] = df['Close'].rolling(window=60).mean()
-                df['Disparity_5'] = df['Close'] / df['MA5']
-                df['Disparity_20'] = df['Close'] / df['MA20']
+                # ---------------- [Alpha50 Feature Engineering] ----------------
+                # Qlib Alpha158 스타일의 체계적 Feature 생성
+                feature_cols = []
                 
-                # 2. RSI
-                delta = df['Close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                rs = gain / loss
-                df['RSI'] = 100 - (100 / (1 + rs))
+                # 1. Windows 설정 (단기, 중기, 장기)
+                windows = [5, 10, 20, 40, 60]
                 
-                # 3. 변동성
-                df['Volatility'] = df['Close'].pct_change().rolling(20).std()
+                # 2. 기본 수익률
+                df['Ret_1d'] = df['Close'].pct_change()
                 
-                # 4. 모멘텀 (Ref: 1달 전 대비 수익률)
-                df['Momentum_1M'] = df['Close'].pct_change(20)
+                for w in windows:
+                    # A. Momentum (ROC): N일 전 대비 수익률
+                    col_roc = f'ROC_{w}'
+                    df[col_roc] = df['Close'].pct_change(w)
+                    feature_cols.append(col_roc)
+                    
+                    # B. MA Disparity (이격도): 현재가 / N일 이동평균
+                    col_ma = f'MA_Dist_{w}'
+                    ma = df['Close'].rolling(window=w).mean()
+                    df[col_ma] = df['Close'] / ma
+                    feature_cols.append(col_ma)
+                    
+                    # C. Volatility (변동성): N일 수익률 표준편차
+                    col_vol = f'Vol_{w}'
+                    df[col_vol] = df['Ret_1d'].rolling(window=w).std()
+                    feature_cols.append(col_vol)
+                    
+                    # D. Volume Ratio (거래량 비율): 현재 거래량 / N일 평균 거래량
+                    col_vol_ratio = f'Vol_Ratio_{w}'
+                    vol_ma = df['Volume'].rolling(window=w).mean()
+                    df[col_vol_ratio] = df['Volume'] / vol_ma
+                    feature_cols.append(col_vol_ratio)
                 
-                # Label (Target): 다음날 수익률 (Shift -1)
+                # E. RSI (상대강도지수) - 14일 표준 + 장기 60일
+                for rsi_w in [14, 60]:
+                    delta = df['Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(rsi_w).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(rsi_w).mean()
+                    rs = gain / loss
+                    col_rsi = f'RSI_{rsi_w}'
+                    df[col_rsi] = 100 - (100 / (1 + rs))
+                    feature_cols.append(col_rsi)
+
+                # Label (Target): 다음날 수익률
                 df['Next_Return'] = df['Close'].pct_change().shift(-1)
                 
                 df.dropna(inplace=True)
@@ -730,13 +752,14 @@ elif selection == "🤖 AI 모델 테스팅":
             st.stop()
             
         # B. 모델 학습
-        status_text.text(f"{model_type} 모델 학습 중...")
+        status_text.text(f"{model_type} 모델 학습 중 (Features: {len(feature_cols)}개)...")
         
         # 전체 데이터를 하나의 학습셋으로 병합 (Global Model)
         X_train_all = []
         y_train_all = []
         
-        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
+        # feature_cols는 위에서 자동 생성됨
+        
         test_datasets = {} 
         
         for ticker in valid_tickers:
@@ -846,7 +869,7 @@ elif selection == "🤖 AI 모델 테스팅":
             "Benchmark (Equal Weight)": benchmark_curve
         }).set_index("Date")
         
-        st.success(f"학습 완료! ({model_type}) - 아래 '오늘의 추천 PICK' 메뉴를 확인하세요.")
+        st.success(f"학습 완료! ({model_type}) - 사용된 Features: {len(feature_cols)}개")
         
         total_ret = results_df['AI Model Portfolio'].iloc[-1] - 1
         bench_ret = results_df['Benchmark (Equal Weight)'].iloc[-1] - 1
@@ -864,13 +887,15 @@ elif selection == "🤖 AI 모델 테스팅":
         st.plotly_chart(fig, use_container_width=True)
         
         if "Linear" in model_type or "LightGBM" in model_type:
-            st.subheader("🔍 모델이 중요하게 본 지표")
+            st.subheader(f"🔍 모델 중요 Feature (Top 20 / {len(feature_cols)})")
             if "Linear" in model_type:
                 importance = np.abs(model.coef_)
             else:
                 importance = model.feature_importances_
+            
             imp_df = pd.DataFrame({"Feature": feature_cols, "Importance": importance}).sort_values(by="Importance", ascending=False)
-            st.bar_chart(imp_df.set_index("Feature"))
+            # Top 20만 표시
+            st.bar_chart(imp_df.head(20).set_index("Feature"))
 
     # F. 오늘의 추천 PICK (별도 섹션)
     st.divider()
@@ -925,12 +950,14 @@ elif selection == "🤖 AI 모델 테스팅":
                             feats_scaled = scaler.transform(feats)
                             score = model.predict(feats_scaled)[0]
                             
+                            # Top Features 추출 (값이 큰 것 위주 or 주요 Feature)
+                            # 50개를 다 보낼 순 없으니, 주요 Feature 몇 개만 추려서 보냄
+                            # 여기서는 RSI_14, ROC_20, Vol_20 등 대표값만 보냄
                             feat_dict = {
-                                "Disparity_5": f"{last_row['Disparity_5'].values[0]:.4f}",
-                                "Disparity_20": f"{last_row['Disparity_20'].values[0]:.4f}",
-                                "RSI": f"{last_row['RSI'].values[0]:.2f}",
-                                "Volatility": f"{last_row['Volatility'].values[0]:.4f}",
-                                "Momentum_1M": f"{last_row['Momentum_1M'].values[0]:.2%}"
+                                "RSI_14": f"{last_row['RSI_14'].values[0]:.2f}",
+                                "ROC_20 (Momentum)": f"{last_row['ROC_20'].values[0]:.2%}",
+                                "MA_Dist_20": f"{last_row['MA_Dist_20'].values[0]:.4f}",
+                                "Vol_20": f"{last_row['Vol_20'].values[0]:.4f}"
                             }
                             
                             today_scores.append({
@@ -950,8 +977,8 @@ elif selection == "🤖 AI 모델 테스팅":
                         # Gemini 프롬프트
                         prompt_context = f"Model Type: {selected_model_name}\nTarget Strategy: Buy Top 3 scores daily.\n\nTop 3 Recommended Stocks:\n"
                         for i, item in enumerate(top_3):
-                            prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.4f})\n   - Indicators: {item['Features']}\n"
-                        prompt_context += "\nBased on the technical indicators provided (RSI, MA Disparity, Volatility, Momentum), act as a Quantitative Analyst and explain WHY the model likely selected these stocks. Focus on the quantitative rationale. Write in Korean."
+                            prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.4f})\n   - Key Indicators: {item['Features']}\n"
+                        prompt_context += "\nBased on the key technical indicators provided (RSI, ROC, MA Dist, Volatility), act as a Quantitative Analyst and explain WHY the model likely selected these stocks. The model uses 50+ features, but these are the key summary stats. Focus on the quantitative rationale. Write in Korean."
                         
                         try:
                             insight_model = genai.GenerativeModel("gemini-3-flash-preview")
