@@ -6,3 +6,4 @@ scikit-learn
 lightgbm
 scipy
 lxml
+requests
