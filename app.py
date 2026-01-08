@@ -207,7 +207,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 리포트 뷰어"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Talking Point"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
     st.title("🤖 미래에셋 로보어드바이저 상담")
