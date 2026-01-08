@@ -470,6 +470,25 @@ if selection == "📈 전략 실험실 (Beta)":
             progress_bar = st.progress(0)
             status_text = st.empty()
             
+            # SPY 벤치마크 데이터 다운로드 (시장 수익률 비교용)
+            spy_total_return = 0.0
+            try:
+                spy_df = yf.download("SPY", start=start_date, end=end_date, progress=False)
+                if not spy_df.empty:
+                    if isinstance(spy_df.columns, pd.MultiIndex):
+                        spy_df.columns = spy_df.columns.get_level_values(0)
+                    
+                    if 'Adj Close' not in spy_df.columns:
+                         if 'Close' in spy_df.columns:
+                            spy_df['Adj Close'] = spy_df['Close']
+                    
+                    if 'Adj Close' in spy_df.columns:
+                        spy_return_series = spy_df['Adj Close'].pct_change()
+                        spy_cum_return = (1 + spy_return_series).cumprod()
+                        spy_total_return = spy_cum_return.iloc[-1] - 1
+            except Exception as e:
+                st.warning(f"SPY 벤치마크 데이터를 가져오는 데 실패했습니다: {e}")
+
             for i, ticker in enumerate(tickers):
                 status_text.text(f"분석 중: {ticker} ({i+1}/{len(tickers)})")
                 try:
@@ -485,7 +504,6 @@ if selection == "📈 전략 실험실 (Beta)":
                         try:
                             df.columns = df.columns.get_level_values(0)
                         except:
-                            # 만약 get_level_values가 실패하면 단순화 시도
                             pass
 
                     # 컬럼 이름 정리
@@ -547,15 +565,18 @@ if selection == "📈 전략 실험실 (Beta)":
                     
                     # 최종 수익률
                     total_return = df['Cumulative_Strategy'].iloc[-1] - 1
-                    market_return = df['Cumulative_Market'].iloc[-1] - 1
-                    alpha = total_return - market_return
+                    market_return = df['Cumulative_Market'].iloc[-1] - 1 # Buy & Hold return
+                    
+                    # Alpha vs SPY
+                    alpha_spy = total_return - spy_total_return
 
                     # 결과 저장
                     results_list.append({
                         "종목": ticker,
                         "전략 수익률": f"{total_return:.2%}",
-                        "벤치마크 수익률": f"{market_return:.2%}",
-                        "초과 수익 (Alpha)": f"{alpha:.2%}",
+                        "자체 B&H": f"{market_return:.2%}", # Buy and Hold
+                        "SPY 수익률": f"{spy_total_return:.2%}",
+                        "Alpha(vs SPY)": f"{alpha_spy:.2%}",
                         "MDD": f"{mdd:.2%}",
                         "Raw_Return": total_return # 정렬용
                     })
@@ -580,6 +601,7 @@ if selection == "📈 전략 실험실 (Beta)":
                 results_df = results_df.sort_values(by="Raw_Return", ascending=False).drop(columns=["Raw_Return"])
                 
                 st.subheader("📊 종목별 성과 (수익률 순)")
+                st.caption(f"SPY(S&P 500) 수익률 ({start_date} ~ {end_date}): **{spy_total_return:.2%}**")
                 st.dataframe(results_df, use_container_width=True)
                 
                 # 2. 비교 차트
