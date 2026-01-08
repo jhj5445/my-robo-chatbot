@@ -346,8 +346,16 @@ elif selection == "📄 Macro Takling Point":
                 components.html(
                     """
                     <script>
-                        // 상위 윈도우(메인 화면) 스크롤을 맨 위로 이동
-                        window.parent.scrollTo({top: 0, behavior: 'instant'});
+                        // Streamlit 앱의 메인 스크롤 컨테이너를 찾아 최상단으로 이동
+                        // [data-testid="stAppViewContainer"]가 실제 스크롤 영역임
+                        var scrollable = window.parent.document.querySelector('[data-testid="stAppViewContainer"]');
+                        if (scrollable) {
+                            scrollable.scrollTo({top: 0, behavior: 'auto'}); // behavior: 'auto'가 더 즉각적일 수 있음
+                            scrollable.scrollTop = 0; // 강제 설정
+                        } else {
+                            // 혹시 못 찾으면 window 스크롤 시도
+                            window.parent.scrollTo(0, 0);
+                        }
                     </script>
                     """,
                     height=0,
