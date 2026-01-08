@@ -282,6 +282,40 @@ with st.sidebar:
     st.title("메뉴")
     selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너"], label_visibility="collapsed")
 
+# -----------------------------------------------------------------------------
+# Helper Functions for Ticker Fetching
+# -----------------------------------------------------------------------------
+@st.cache_data
+def get_sp500_tickers():
+    """Wikipedia에서 S&P 500 종목 리스트를 가져옵니다."""
+    try:
+        url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+        tables = pd.read_html(url)
+        df = tables[0]
+        tickers = df['Symbol'].tolist()
+        return [t.replace('.', '-') for t in tickers] # BRK.B -> BRK-B 변환
+    except Exception as e:
+        st.error(f"S&P 500 리스트를 가져오는 중 오류: {e}")
+        return []
+
+@st.cache_data
+def get_nasdaq100_tickers():
+    """Wikipedia에서 NASDAQ 100 종목 리스트를 가져옵니다."""
+    try:
+        url = 'https://en.wikipedia.org/wiki/Nasdaq-100'
+        tables = pd.read_html(url)
+        # 테이블 인덱스가 바뀔 수 있으므로 열 이름으로 확인
+        for table in tables:
+            if 'Ticker' in table.columns:
+                return [t.replace('.', '-') for t in table['Ticker'].tolist()]
+            elif 'Symbol' in table.columns:
+                return [t.replace('.', '-') for t in table['Symbol'].tolist()]
+        return []
+    except Exception as e:
+        st.error(f"NASDAQ 100 리스트를 가져오는 중 오류: {e}")
+        return []
+
+
 if selection == "🤖 챗봇":
     st.title("🤖 로보어드바이저 상담")
     st.caption("FAQ 데이터를 기반으로 AI가 답변해 드립니다.")
@@ -1367,12 +1401,27 @@ elif selection == "🔍 기술적 패턴 스캐너":
     with st.expander("📡 스캔 설정 (Universe)", expanded=True):
         universe_preset = st.selectbox(
             "스캔 대상 그룹 선택",
-            ["NASDAQ Top 30 (Big Tech)", "Dow Jones 30 (Blue Chips)", "S&P 100 (Large Cap)", "직접 입력"]
+            ["NASDAQ Top 30 (Big Tech)", "Dow Jones 30 (Blue Chips)", "S&P 100 (Large Cap)", "S&P 500 (Full)", "NASDAQ 100 (Full)", "직접 입력"]
         )
+
+        scan_tickers = []
 
         if universe_preset == "직접 입력":
             tickers_input = st.text_input("종목 코드 입력 (쉼표 구분)", "AAPL, MSFT, TSLA, NVDA, AMD, INTC, QCOM")
             scan_tickers = [t.strip().upper() for t in tickers_input.split(',') if t.strip()]
+        
+        elif universe_preset == "S&P 500 (Full)":
+            with st.spinner("S&P 500 종목 리스트를 가져오는 중..."):
+                scan_tickers = get_sp500_tickers()
+                if not scan_tickers: # Fallback if fetch fails
+                     scan_tickers = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL"] # Minimal fallback
+        
+        elif universe_preset == "NASDAQ 100 (Full)":
+             with st.spinner("NASDAQ 100 종목 리스트를 가져오는 중..."):
+                scan_tickers = get_nasdaq100_tickers()
+                if not scan_tickers:
+                    scan_tickers = ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL"]
+
         elif universe_preset == "NASDAQ Top 30 (Big Tech)":
             scan_tickers = [
                 "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "COST", "PEP",
