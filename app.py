@@ -49,7 +49,7 @@ if not api_keys:
 # 기본 키로 초기 설정
 genai.configure(api_key=api_keys[0])
 
-def generate_content_with_rotation(prompt, model_name="gemini-pro"):
+def generate_content_with_rotation(prompt, model_name="gemini-3-flash-preview"):
     """
     API 키를 순환하며 컨텐츠 생성을 시도합니다.
     Rate Limit 발생 시 다음 키로 자동 전환합니다.
