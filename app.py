@@ -458,18 +458,30 @@ if selection == "📈 전략 실험실 (Beta)":
         with st.spinner("데이터 분석 중..."):
             try:
                 # A. 데이터 다운로드
-                df = yf.download(ticker, start=start_date, end=end_date)
+                df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                
                 if df.empty:
-                    st.error("데이터를 불러올 수 없습니다. 티커를 확인해주세요.")
+                    st.error(f"데이터를 불러올 수 없습니다. '{ticker}' 티커가 정확한지 확인해주세요.")
                     st.stop()
                 
                 # yfinance 최신 버전 호환성 (Multi-index 컬럼 처리)
+                # 예: Columns가 ('Adj Close', 'SPY') 형태일 경우 --> 'Adj Close'로 Flatten
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
 
+                # 컬럼 이름 정리 (필수 컬럼 확인)
+                # 어떤 버전은 'Adj Close' 대신 'Close'만 줄 수도 있음
+                if 'Adj Close' not in df.columns:
+                    if 'Close' in df.columns:
+                        df['Adj Close'] = df['Close']
+                    else:
+                        st.error(f"데이터 포맷 오류: 가격 데이터(Close/Adj Close)를 찾을 수 없습니다. (컬럼: {df.columns})")
+                        st.stop()
+                
+                # 수익률 계산
                 df['Return'] = df['Adj Close'].pct_change()
                 df.dropna(inplace=True)
-
+                
                 # B. 전략 로직 계산
                 df['Signal'] = 0 # 1: 보유, 0: 미보유
 
