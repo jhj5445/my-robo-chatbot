@@ -132,7 +132,7 @@ st.markdown(
         /* 입력창 텍스트 영역 (투명 배경) */
         div[data-testid="stChatInput"] textarea {
             background-color: transparent !important;
-            color: #dcddde !important; /* 텍스트 색상 */
+            color: #ffffff !important; /* 텍스트 색상 (배경 대비 잘 보이게 흰색 변경) */
         }
         
         /* 플레이스홀더 텍스트 색상 */
@@ -195,10 +195,47 @@ if selection == "🤖 챗봇":
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    # FAQ 데이터에서 키워드 추출 (간단한 파싱)
+    def get_faq_topics(text):
+        topics = []
+        for line in text.split('\n'):
+            if line.strip().startswith("- **"):
+                # "- **키워드**: 설명" 형태에서 키워드 추출
+                match = re.search(r"\- \*\*(.+?)\*\*", line)
+                if match:
+                    topics.append(match.group(1))
+        return topics
+
+    faq_topics = get_faq_topics(faq_data)
+
+    # 추천 질문 (FAQ) 영역
+    with st.expander("💡 자주 묻는 질문 (추천 키워드)"):
+        st.caption("아래 버튼을 누르면 해당 내용에 대해 질문합니다.")
+        # 버튼들을 여러 열로 나누어 배치
+        cols = st.columns(3)
+        for i, topic in enumerate(faq_topics):
+            if cols[i % 3].button(topic, key=f"faq_{i}"):
+                # 버튼 클릭 시 세션에 메시지 추가 (이후 리런되면서 아래 로직에서 처리됨)
+                st.session_state.messages.append({"role": "user", "content": f"{topic}에 대해 알려줘"})
+                st.rerun()
+
     # 기존 대화 기록 표시
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            
+    # 가장 최근 메시지가 user이고 assistant의 답변이 없을 때 (버튼 클릭 직후) 답변 생성 트리거
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        # 이미 답변이 달린 적이 있는지 확인 (마지막이 user면 답변해야 함)
+        # 하지만 Streamlit 구조상 chat_input 루프 밖에서 처리해야 자연스러움.
+        # 여기서는 chat_input이 아래에 있어서, 버튼 클릭 -> rerun -> 여기까지 옴 -> 
+        # 화면에 user msg 표시됨 -> 이제 assistant msg 표시할 차례.
+        
+        # 마지막 메시지가 assistant가 아닐 경우에만 답변 생성 시도
+        # (주의: chat_input을 통한 입력은 아래 블록에서 처리되므로, 여기서는 버튼 클릭으로 인한 경우만 처리하면 좋음.
+        #  그러나 간단하게직전 메시지가 user면 무조건 답변하게 로직을 통합하는게 깔끔함.
+        #  다만 아래 chat_input 로직과 중복되지 않게 해야 함.)
+        pass 
 
     # 사용자 질문 입력
     if prompt := st.chat_input("궁금한 점을 입력하세요"):
@@ -206,10 +243,13 @@ if selection == "🤖 챗봇":
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # AI 답변 생성
+    # 답변 생성 로직 (버튼 클릭 or 입력창 입력 공통 처리)
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
         with st.chat_message("assistant"):
             try:
-                response = model.generate_content(prompt)
+                # 마지막 사용자 메시지 가져오기
+                last_user_msg = st.session_state.messages[-1]["content"]
+                response = model.generate_content(last_user_msg)
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
             except Exception as e:
