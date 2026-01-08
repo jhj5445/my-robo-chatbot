@@ -282,6 +282,8 @@ with st.sidebar:
     st.title("메뉴")
     selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너"], label_visibility="collapsed")
 
+import requests
+
 # -----------------------------------------------------------------------------
 # Helper Functions for Ticker Fetching
 # -----------------------------------------------------------------------------
@@ -290,7 +292,9 @@ def get_sp500_tickers():
     """Wikipedia에서 S&P 500 종목 리스트를 가져옵니다."""
     try:
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-        tables = pd.read_html(url)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.get(url, headers=headers)
+        tables = pd.read_html(response.text)
         df = tables[0]
         tickers = df['Symbol'].tolist()
         return [t.replace('.', '-') for t in tickers] # BRK.B -> BRK-B 변환
@@ -303,7 +307,9 @@ def get_nasdaq100_tickers():
     """Wikipedia에서 NASDAQ 100 종목 리스트를 가져옵니다."""
     try:
         url = 'https://en.wikipedia.org/wiki/Nasdaq-100'
-        tables = pd.read_html(url)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.get(url, headers=headers)
+        tables = pd.read_html(response.text)
         # 테이블 인덱스가 바뀔 수 있으므로 열 이름으로 확인
         for table in tables:
             if 'Ticker' in table.columns:
