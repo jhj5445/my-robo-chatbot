@@ -17,13 +17,70 @@ import numpy as np
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
 # 안전한 방식 (Streamlit Secrets 사용)
-if "GOOGLE_API_KEY" in st.secrets:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-else:
-    # 로컬 테스트용 환경변수 또는 직접 입력 (배포 시에는 위 if문이 작동함)
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# -----------------------------------------------------------------------------
+# 1. API 키 설정 (Rotation Logic)
+# -----------------------------------------------------------------------------
+# 사용 가능한 모든 API 키를 로드합니다.
+api_keys = []
 
-genai.configure(api_key=GOOGLE_API_KEY)
+# 1. Streamlit Secrets 우선 확인
+if "GOOGLE_API_KEY" in st.secrets:
+    api_keys.append(st.secrets["GOOGLE_API_KEY"])
+    # 추가 키 확인 (GOOGLE_API_KEY_2, _3 ...)
+    i = 2
+    while f"GOOGLE_API_KEY_{i}" in st.secrets:
+        api_keys.append(st.secrets[f"GOOGLE_API_KEY_{i}"])
+        i += 1
+else:
+    # 2. 환경 변수 확인 (로컬 테스트)
+    key = os.getenv("GOOGLE_API_KEY")
+    if key:
+        api_keys.append(key)
+        # 추가 키 확인
+        i = 2
+        while os.getenv(f"GOOGLE_API_KEY_{i}"):
+            api_keys.append(os.getenv(f"GOOGLE_API_KEY_{i}"))
+            i += 1
+
+if not api_keys:
+    st.error("API 키가 설정되지 않았습니다. .streamlit/secrets.toml 또는 환경변수를 확인해주세요.")
+    st.stop()
+
+# 기본 키로 초기 설정
+genai.configure(api_key=api_keys[0])
+
+def generate_content_with_rotation(prompt, model_name="gemini-pro"):
+    """
+    API 키를 순환하며 컨텐츠 생성을 시도합니다.
+    Rate Limit 발생 시 다음 키로 자동 전환합니다.
+    """
+    last_error = None
+    
+    for i, key in enumerate(api_keys):
+        try:
+            # 현재 키로 설정 및 생성 시도
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+            
+        except Exception as e:
+            last_error = e
+            # Quota 관련 에러인 경우 다음 키 시도
+            # (429 Resource exhausted, Quota exceeded 등)
+            error_str = str(e)
+            if "429" in error_str or "Quota" in error_str or "Resource exhausted" in error_str:
+                # 마지막 키가 아니면 다음 키로 계속
+                if i < len(api_keys) - 1:
+                    continue
+            
+            # 그 외 에러거나 마지막 키면 루프 종료 (After loop raises)
+            break
+            
+    # 모든 시도 실패 시 에러 발생
+    raise last_error
+
+# -----------------------------------------------------------------------------
 
 # 2. FAQ 데이터 정의 (여기에 준비하신 FAQ 내용을 자유롭게 넣으세요)
 faq_data = """
