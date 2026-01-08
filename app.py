@@ -199,6 +199,41 @@ st.markdown(
         [data-testid="chatAvatarIcon-assistant"] {
             background-color: #ffb900; /* AI는 노란색 포인트 */
         }
+        
+        /* 리포트 뷰어 스타일 격리 (Global Style Override 방지) */
+        .report-view-container {
+            all: initial; /* 컨테이너 자체 초기화 */
+            background-color: white !important; /* 배경은 흰색 유지 */
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: block; /* block 요소로 설정 */
+            color: black; /* 기본 글자색 복구 */
+        }
+        /* 리포트 내부 요소들의 스타일을 원래대로(브라우저 기본 or 내부 스타일) 되돌림 */
+        .report-view-container h1, 
+        .report-view-container h2, 
+        .report-view-container h3, 
+        .report-view-container p, 
+        .report-view-container div, 
+        .report-view-container span, 
+        .report-view-container table, 
+        .report-view-container td, 
+        .report-view-container th,
+        .report-view-container a,
+        .report-view-container li,
+        .report-view-container ul,
+        .report-view-container ol {
+            color: revert !important;
+            font-family: revert !important;
+            font-size: revert !important;
+            font-weight: revert !important;
+            line-height: revert !important;
+            margin: revert !important;
+            padding: revert !important;
+            text-align: revert !important;
+            list-style: revert !important;
+        }
     </style>
     """,
     unsafe_allow_html=True
@@ -348,7 +383,8 @@ elif selection == "📄 Macro Takling Point":
 
                     # Iframe 방식(components.html) 대신 st.markdown을 사용하여 자연스러운 스크롤 구현
                     # 리포트 스타일이 앱 스타일과 충돌하지 않도록 별도 div로 감싸고 백그라운드 지정
-                    wrapper_start = """<div style="background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">"""
+                    # .report-view-container 클래스를 추가하여 위 CSS에서 스타일 격리 적용
+                    wrapper_start = """<div class="report-view-container">"""
                     wrapper_end = "</div>"
                     
                     st.markdown(wrapper_start + html_content_flat + wrapper_end, unsafe_allow_html=True)
