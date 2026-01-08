@@ -7,7 +7,13 @@ import streamlit.components.v1 as components
 
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
-GOOGLE_API_KEY = "AIzaSyBbYUnSBp32fVzTiTlVRcN1GE9JK2BrLKs"
+# 안전한 방식 (Streamlit Secrets 사용)
+if "GOOGLE_API_KEY" in st.secrets:
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+else:
+    # 로컬 테스트용 환경변수 또는 직접 입력 (배포 시에는 위 if문이 작동함)
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # 2. FAQ 데이터 정의 (여기에 준비하신 FAQ 내용을 자유롭게 넣으세요)
