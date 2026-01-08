@@ -192,34 +192,30 @@ if selection == "🤖 챗봇":
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # FAQ 데이터에서 키워드 추출 (간단한 파싱)
-    def get_faq_topics(text):
-        topics = []
-        for line in text.split('\n'):
-            if line.strip().startswith("- **"):
-                # "- **키워드**: 설명" 형태에서 키워드 추출
-                match = re.search(r"\- \*\*(.+?)\*\*", line)
-                if match:
-                    topics.append(match.group(1))
-        return topics
-
-    faq_topics = get_faq_topics(faq_data)
-
-    # 추천 질문 (FAQ) 영역
-    with st.expander("💡 자주 묻는 질문 (추천 키워드)"):
-        st.caption("아래 버튼을 누르면 해당 내용에 대해 질문합니다.")
-        # 버튼들을 여러 열로 나누어 배치
-        cols = st.columns(3)
-        for i, topic in enumerate(faq_topics):
-            if cols[i % 3].button(topic, key=f"faq_{i}"):
-                # 버튼 클릭 시 세션에 메시지 추가 (이후 리런되면서 아래 로직에서 처리됨)
-                st.session_state.messages.append({"role": "user", "content": f"{topic}에 대해 알려줘"})
-                st.rerun()
-
     # 기존 대화 기록 표시
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+
+    # 추천 질문 (FAQ) 영역 - 대화 기록 아래에 배치
+    # 명확한 키워드로 직접 정의
+    faq_keywords = [
+        "서비스 가입/설계",
+        "포트폴리오 비중 수정",
+        "퇴직연금 가입제한",
+        "개인연금 가입제한",
+        "매매/리밸런싱 규칙",
+        "수익률 미노출 사유",
+        "주요 에러 사례"
+    ]
+
+    with st.expander("💡 자주 묻는 질문 (추천 키워드)"):
+        st.caption("궁금한 내용을 클릭해보세요.")
+        cols = st.columns(4) # 4열로 배치
+        for i, keyword in enumerate(faq_keywords):
+            if cols[i % 4].button(keyword, key=f"faq_{i}"):
+                st.session_state.messages.append({"role": "user", "content": f"{keyword}에 대해 알려줘"})
+                st.rerun()
             
     # 가장 최근 메시지가 user이고 assistant의 답변이 없을 때 (버튼 클릭 직후) 답변 생성 트리거
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
