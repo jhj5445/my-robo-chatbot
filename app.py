@@ -210,7 +210,76 @@ st.markdown(
         /* 사용자/AI 메시지 구분감 (선택 사항) */
         [data-testid="chatAvatarIcon-user"] {
             background-color: #5383e8;
-        }
+        }# --------------------------------------------------------------------------------
+# 캐싱 함수 정의 (AI 모델용)
+# --------------------------------------------------------------------------------
+@st.cache_data(ttl=3600*12) # 12시간마다 갱신
+def fetch_and_prepare_data(tickers, train_start, end_date_str):
+    # end_date_str: 캐시 키 생성을 위해 문자열로 받음
+    end_date = pd.to_datetime(end_date_str)
+    full_data = {}
+    valid_tickers = []
+    
+    for ticker in tickers:
+        try:
+            # 넉넉하게 받아서 이평선 계산
+            df = yf.download(ticker, start=train_start - pd.Timedelta(days=100), end=end_date, progress=False)
+            
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            
+            if 'Adj Close' not in df.columns:
+                if 'Close' in df.columns:
+                    df['Adj Close'] = df['Close']
+                else:
+                    continue
+            
+            df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
+            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            
+            # Feature Engineering
+            df['MA5'] = df['Close'].rolling(window=5).mean()
+            df['MA20'] = df['Close'].rolling(window=20).mean()
+            df['MA60'] = df['Close'].rolling(window=60).mean()
+            df['Disparity_5'] = df['Close'] / df['MA5']
+            df['Disparity_20'] = df['Close'] / df['MA20']
+            
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+            rs = gain / loss
+            df['RSI'] = 100 - (100 / (1 + rs))
+            
+            df['Volatility'] = df['Close'].pct_change().rolling(20).std()
+            df['Momentum_1M'] = df['Close'].pct_change(20)
+            df['Next_Return'] = df['Close'].pct_change().shift(-1)
+            
+            df.dropna(inplace=True)
+            
+            if not df.empty:
+                full_data[ticker] = df
+                valid_tickers.append(ticker)
+        except:
+            pass
+            
+    return full_data, valid_tickers
+
+@st.cache_resource
+def train_model_cached(model_type, X_train, y_train):
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    if "Linear" in model_type:
+        model = LinearRegression()
+    elif "SVM" in model_type:
+        model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+    elif "LightGBM" in model_type:
+        model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
+        
+    model.fit(X_train_scaled, y_train)
+    return model, scaler
+
+# --------------------------------------------------------------------------------
         [data-testid="chatAvatarIcon-assistant"] {
             background-color: #ffb900; /* AI는 노란색 포인트 */
         }
@@ -654,88 +723,25 @@ elif selection == "🤖 AI 모델 테스팅":
     # 2. 실행
     if st.button("🧠 AI 모델 학습 및 백테스팅 시작"):
         status_text = st.empty()
-        progress_bar = st.progress(0)
         
-        # A. 데이터 수집 및 피처 엔지니어링
-        status_text.text("데이터 다운로드 및 피처 생성 중...")
+        # A. 데이터 수집 (Cached)
+        status_text.text("데이터 준비 중 (첫 실행 시 시간이 다소 걸릴 수 있습니다)...")
+        end_date_str = pd.to_datetime("today").strftime("%Y-%m-%d")
         
-        full_data = {}
-        valid_tickers = []
-        
-        # 전체 기간 설정
-        end_date = pd.to_datetime("today")
-        
-        for i, ticker in enumerate(tickers):
-            try:
-                # 넉넉하게 받아서 이평선 계산
-                df = yf.download(ticker, start=train_start - pd.Timedelta(days=100), end=end_date, progress=False)
-                
-                # MultiIndex 처리
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
-                # 컬럼 보정
-                if 'Adj Close' not in df.columns:
-                    if 'Close' in df.columns:
-                        df['Adj Close'] = df['Close']
-                    else:
-                        continue
-                
-                df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
-                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] # 편의상 변경
-                
-                # Feature Engineering
-                # 1. 이동평균 이격도
-                df['MA5'] = df['Close'].rolling(window=5).mean()
-                df['MA20'] = df['Close'].rolling(window=20).mean()
-                df['MA60'] = df['Close'].rolling(window=60).mean()
-                df['Disparity_5'] = df['Close'] / df['MA5']
-                df['Disparity_20'] = df['Close'] / df['MA20']
-                
-                # 2. RSI
-                delta = df['Close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                rs = gain / loss
-                df['RSI'] = 100 - (100 / (1 + rs))
-                
-                # 3. 변동성
-                df['Volatility'] = df['Close'].pct_change().rolling(20).std()
-                
-                # 4. 모멘텀 (Ref: 1달 전 대비 수익률)
-                df['Momentum_1M'] = df['Close'].pct_change(20)
-                
-                # Label (Target): 다음날 수익률 (Shift -1)
-                df['Next_Return'] = df['Close'].pct_change().shift(-1)
-                
-                df.dropna(inplace=True)
-                
-                if not df.empty:
-                    full_data[ticker] = df
-                    valid_tickers.append(ticker)
-                    
-            except Exception as e:
-                pass
-            
-            progress_bar.progress((i + 1) / len(tickers) * 0.3)
+        with st.spinner("데이터 다운로드 및 처리 중..."):
+            full_data, valid_tickers = fetch_and_prepare_data(tickers, train_start, end_date_str)
 
         if not valid_tickers:
             st.error("유효한 데이터가 없습니다.")
             st.stop()
             
-        # B. 모델 학습
-        status_text.text(f"{model_type} 모델 학습 중...")
-        
-        # 전체 데이터를 하나의 학습셋으로 병합 (Global Model)
-        # Train: ~ test_start 전까지
-        # Test: test_start ~
-        
-        X_train_all = []
-        y_train_all = []
+        # B. 데이터셋 분할 & 모델 학습 (Cached)
+        status_text.text(f"{model_type} 모델 최적화 중...")
         
         feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
-        
-        test_datasets = {} # 종목별 테스트 데이터 저장
+        X_train_all = []
+        y_train_all = []
+        test_datasets = {} 
         
         for ticker in valid_tickers:
             df = full_data[ticker]
@@ -753,29 +759,14 @@ elif selection == "🤖 AI 모델 테스팅":
                 test_datasets[ticker] = test_df
         
         if not X_train_all:
-            st.error("학습 데이터가 부족합니다 기간을 늘려주세요.")
+            st.error("학습 데이터가 부족합니다.")
             st.stop()
             
         X_train = np.concatenate(X_train_all)
         y_train = np.concatenate(y_train_all)
         
-        # Scaling (SVM/Linear 필수)
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        
-        # Model Fitting
-        if "Linear" in model_type:
-            model = LinearRegression()
-        elif "SVM" in model_type:
-            # SVR은 느릴 수 있으므로 데이터 샘플링 고려, 여기선 그냥 진행
-            if len(X_train) > 10000:
-                st.warning("데이터가 많아 SVM 학습 속도가 느릴 수 있습니다.")
-            model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
-        elif "LightGBM" in model_type:
-            model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
-            
-        model.fit(X_train_scaled, y_train)
-        progress_bar.progress(0.7)
+        # 모델 학습 (캐싱 적용)
+        model, scaler = train_model_cached(model_type, X_train, y_train)
         
         # C. 예측 및 백테스팅 (Daily Top-K)
         status_text.text("백테스팅 시뮬레이션 중...")
