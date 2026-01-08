@@ -210,76 +210,7 @@ st.markdown(
         /* 사용자/AI 메시지 구분감 (선택 사항) */
         [data-testid="chatAvatarIcon-user"] {
             background-color: #5383e8;
-        }# --------------------------------------------------------------------------------
-# 캐싱 함수 정의 (AI 모델용)
-# --------------------------------------------------------------------------------
-@st.cache_data(ttl=3600*12) # 12시간마다 갱신
-def fetch_and_prepare_data(tickers, train_start, end_date_str):
-    # end_date_str: 캐시 키 생성을 위해 문자열로 받음
-    end_date = pd.to_datetime(end_date_str)
-    full_data = {}
-    valid_tickers = []
-    
-    for ticker in tickers:
-        try:
-            # 넉넉하게 받아서 이평선 계산
-            df = yf.download(ticker, start=train_start - pd.Timedelta(days=100), end=end_date, progress=False)
-            
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            
-            if 'Adj Close' not in df.columns:
-                if 'Close' in df.columns:
-                    df['Adj Close'] = df['Close']
-                else:
-                    continue
-            
-            df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
-            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-            
-            # Feature Engineering
-            df['MA5'] = df['Close'].rolling(window=5).mean()
-            df['MA20'] = df['Close'].rolling(window=20).mean()
-            df['MA60'] = df['Close'].rolling(window=60).mean()
-            df['Disparity_5'] = df['Close'] / df['MA5']
-            df['Disparity_20'] = df['Close'] / df['MA20']
-            
-            delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-            rs = gain / loss
-            df['RSI'] = 100 - (100 / (1 + rs))
-            
-            df['Volatility'] = df['Close'].pct_change().rolling(20).std()
-            df['Momentum_1M'] = df['Close'].pct_change(20)
-            df['Next_Return'] = df['Close'].pct_change().shift(-1)
-            
-            df.dropna(inplace=True)
-            
-            if not df.empty:
-                full_data[ticker] = df
-                valid_tickers.append(ticker)
-        except:
-            pass
-            
-    return full_data, valid_tickers
-
-@st.cache_resource
-def train_model_cached(model_type, X_train, y_train):
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    
-    if "Linear" in model_type:
-        model = LinearRegression()
-    elif "SVM" in model_type:
-        model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
-    elif "LightGBM" in model_type:
-        model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
-        
-    model.fit(X_train_scaled, y_train)
-    return model, scaler
-
-# --------------------------------------------------------------------------------
+        }
         [data-testid="chatAvatarIcon-assistant"] {
             background-color: #ffb900; /* AI는 노란색 포인트 */
         }
@@ -693,6 +624,12 @@ elif selection == "🤖 AI 모델 테스팅":
     st.title("🤖 AI 트레이딩 모델 연구소")
     st.caption("과거 데이터로 머신러닝 모델을 학습시켜 미래 수익률을 예측하고 검증합니다.")
 
+    # Session State 초기화
+    if 'trained_models' not in st.session_state:
+        st.session_state.trained_models = {}
+    if 'gemini_insights' not in st.session_state:
+        st.session_state.gemini_insights = {}
+
     # 1. 설정
     with st.expander("⚙️ 모델링 설정", expanded=True):
         col1, col2 = st.columns(2)
@@ -720,27 +657,86 @@ elif selection == "🤖 AI 모델 테스팅":
         with col_d2:
             test_start = st.date_input("테스트 시작일 (Backtest Start)", pd.to_datetime("2023-01-01"))
 
-    # 2. 실행
-    if st.button("🧠 AI 모델 학습 및 백테스팅 시작"):
+    # 2. 실행 (학습 버튼)
+    if st.button("🧠 AI 모델 학습 시작"):
         status_text = st.empty()
+        progress_bar = st.progress(0)
         
-        # A. 데이터 수집 (Cached)
-        status_text.text("데이터 준비 중 (첫 실행 시 시간이 다소 걸릴 수 있습니다)...")
-        end_date_str = pd.to_datetime("today").strftime("%Y-%m-%d")
+        # A. 데이터 수집 및 피처 엔지니어링
+        status_text.text("데이터 다운로드 및 피처 생성 중...")
         
-        with st.spinner("데이터 다운로드 및 처리 중..."):
-            full_data, valid_tickers = fetch_and_prepare_data(tickers, train_start, end_date_str)
+        full_data = {}
+        valid_tickers = []
+        
+        # 전체 기간 설정
+        end_date = pd.to_datetime("today")
+        
+        for i, ticker in enumerate(tickers):
+            try:
+                # 넉넉하게 받아서 이평선 계산
+                df = yf.download(ticker, start=train_start - pd.Timedelta(days=100), end=end_date, progress=False)
+                
+                # MultiIndex 처리
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                
+                # 컬럼 보정
+                if 'Adj Close' not in df.columns:
+                    if 'Close' in df.columns:
+                        df['Adj Close'] = df['Close']
+                    else:
+                        continue
+                
+                df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
+                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] # 편의상 변경
+                
+                # Feature Engineering
+                # 1. 이동평균 이격도
+                df['MA5'] = df['Close'].rolling(window=5).mean()
+                df['MA20'] = df['Close'].rolling(window=20).mean()
+                df['MA60'] = df['Close'].rolling(window=60).mean()
+                df['Disparity_5'] = df['Close'] / df['MA5']
+                df['Disparity_20'] = df['Close'] / df['MA20']
+                
+                # 2. RSI
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                df['RSI'] = 100 - (100 / (1 + rs))
+                
+                # 3. 변동성
+                df['Volatility'] = df['Close'].pct_change().rolling(20).std()
+                
+                # 4. 모멘텀 (Ref: 1달 전 대비 수익률)
+                df['Momentum_1M'] = df['Close'].pct_change(20)
+                
+                # Label (Target): 다음날 수익률 (Shift -1)
+                df['Next_Return'] = df['Close'].pct_change().shift(-1)
+                
+                df.dropna(inplace=True)
+                
+                if not df.empty:
+                    full_data[ticker] = df
+                    valid_tickers.append(ticker)
+                    
+            except Exception as e:
+                pass
+            
+            progress_bar.progress((i + 1) / len(tickers) * 0.3)
 
         if not valid_tickers:
             st.error("유효한 데이터가 없습니다.")
             st.stop()
             
-        # B. 데이터셋 분할 & 모델 학습 (Cached)
-        status_text.text(f"{model_type} 모델 최적화 중...")
+        # B. 모델 학습
+        status_text.text(f"{model_type} 모델 학습 중...")
         
-        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
+        # 전체 데이터를 하나의 학습셋으로 병합 (Global Model)
         X_train_all = []
         y_train_all = []
+        
+        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
         test_datasets = {} 
         
         for ticker in valid_tickers:
@@ -759,63 +755,67 @@ elif selection == "🤖 AI 모델 테스팅":
                 test_datasets[ticker] = test_df
         
         if not X_train_all:
-            st.error("학습 데이터가 부족합니다.")
+            st.error("학습 데이터가 부족합니다 기간을 늘려주세요.")
             st.stop()
             
         X_train = np.concatenate(X_train_all)
         y_train = np.concatenate(y_train_all)
         
-        # 모델 학습 (캐싱 적용)
-        model, scaler = train_model_cached(model_type, X_train, y_train)
+        # Scaling
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        
+        # Model Fitting
+        if "Linear" in model_type:
+            model = LinearRegression()
+        elif "SVM" in model_type:
+            if len(X_train) > 10000:
+                st.warning("데이터가 많아 SVM 학습 속도가 느릴 수 있습니다.")
+            model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+        elif "LightGBM" in model_type:
+            model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
+            
+        model.fit(X_train_scaled, y_train)
+        progress_bar.progress(0.7)
         
         # C. 예측 및 백테스팅 (Daily Top-K)
         status_text.text("백테스팅 시뮬레이션 중...")
         
-        # 테스트 기간의 모든 날짜 인덱스 추출
         all_test_dates = sorted(list(set().union(*[d.index for d in test_datasets.values()])))
         
-        strategy_capital = 1.0 # 초기 자본 1.0 (100%)
+        strategy_capital = 1.0 
         benchmark_capital = 1.0
-        
         portfolio_curve = []
         benchmark_curve = []
-        
         dates = []
         
-        # 날짜별 반복
         current_capital = 1.0
-        prev_date = None
         
         for date in all_test_dates:
-            # 오늘자 예측 스코어 수집
             daily_scores = []
-            daily_returns = [] # Benchmark용
+            daily_returns = [] 
             
             for ticker in valid_tickers:
                 if ticker in test_datasets and date in test_datasets[ticker].index:
                     row = test_datasets[ticker].loc[date]
-                    # Feature 추출
                     feats = row[feature_cols].values.reshape(1, -1)
                     feats_scaled = scaler.transform(feats)
-                    
-                    # 예측
                     score = model.predict(feats_scaled)[0]
-                    daily_scores.append((ticker, score, row['Next_Return'])) # Next_Return은 실제 다음날 수익률
+                    daily_scores.append((ticker, score, row['Next_Return']))
                     daily_returns.append(row['Next_Return'])
             
             if not daily_scores:
                 continue
                 
-            # Benchmark Return (Equal Weight)
+            # Benchmark
             avg_daily_ret = np.mean(daily_returns)
             benchmark_capital *= (1 + avg_daily_ret)
             
-            # Strategy: Top 3 매수
-            daily_scores.sort(key=lambda x: x[1], reverse=True) # Score 내림차순
+            # Strategy: Top 3
+            daily_scores.sort(key=lambda x: x[1], reverse=True) 
             top_k = 3
             selected = daily_scores[:top_k]
             
-            # Top-K 평균 수익률
             if selected:
                 strategy_daily_ret = np.mean([x[2] for x in selected])
             else:
@@ -830,16 +830,24 @@ elif selection == "🤖 AI 모델 테스팅":
         progress_bar.progress(1.0)
         status_text.empty()
         
-        # D. 결과 시각화
+        # D. 결과 저장 (Session State)
+        st.session_state.trained_models[model_type] = {
+            "model": model,
+            "scaler": scaler,
+            "feature_cols": feature_cols,
+            "full_data": full_data,
+            "valid_tickers": valid_tickers
+        }
+        
+        # E. 결과 시각화
         results_df = pd.DataFrame({
             "Date": dates,
             "AI Model Portfolio": portfolio_curve,
             "Benchmark (Equal Weight)": benchmark_curve
         }).set_index("Date")
         
-        st.success(f"학습 및 백테스팅 완료! (기간: {len(dates)} 거래일)")
+        st.success(f"학습 완료! ({model_type}) - 아래 '오늘의 추천 PICK' 메뉴를 확인하세요.")
         
-        # 성과 지표
         total_ret = results_df['AI Model Portfolio'].iloc[-1] - 1
         bench_ret = results_df['Benchmark (Equal Weight)'].iloc[-1] - 1
         alpha = total_ret - bench_ret
@@ -847,101 +855,119 @@ elif selection == "🤖 AI 모델 테스팅":
         c1, c2, c3 = st.columns(3)
         c1.metric("AI 포트폴리오 수익률", f"{total_ret:.2%}", delta=f"{alpha:.2%}")
         c2.metric("벤치마크 수익률", f"{bench_ret:.2%}")
-        
-        # MDD
         mdd_series = results_df['AI Model Portfolio'] / results_df['AI Model Portfolio'].cummax() - 1
         mdd = mdd_series.min()
         c3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
         
-        # 차트
         st.subheader("📈 백테스팅 결과: AI Top-3 전략 vs 시장")
         fig = px.line(results_df, title=f"{model_type} 기반 Top-3 종목 추천 전략 성과")
         st.plotly_chart(fig, use_container_width=True)
         
-        # Feature Importance (선형, LGBM만)
         if "Linear" in model_type or "LightGBM" in model_type:
-            st.subheader("🔍 모델이 중요하게 본 지표 (Feature Importance)")
+            st.subheader("🔍 모델이 중요하게 본 지표")
             if "Linear" in model_type:
                 importance = np.abs(model.coef_)
             else:
                 importance = model.feature_importances_
-                
-            imp_df = pd.DataFrame({
-                "Feature": feature_cols,
-                "Importance": importance
-            }).sort_values(by="Importance", ascending=False)
-            
+            imp_df = pd.DataFrame({"Feature": feature_cols, "Importance": importance}).sort_values(by="Importance", ascending=False)
             st.bar_chart(imp_df.set_index("Feature"))
 
-        # E. 오늘의 추천 종목 (AI Pick) & Gemini Insight
-        st.divider()
-        st.subheader("🔮 AI & Gemini: 오늘의 원픽 (Top 3)")
+    # F. 오늘의 추천 PICK (별도 섹션)
+    st.divider()
+    st.subheader("🔮 오늘의 추천 PICK (Daily Top 3)")
+    
+    if not st.session_state.trained_models:
+        st.info("👆 위에서 먼저 AI 모델을 학습시켜주세요.")
+    else:
+        # 학습된 모델 선택
+        model_options = list(st.session_state.trained_models.keys())
+        selected_model_name = st.selectbox("추천을 확인할 학습 모델 선택", model_options)
         
-        with st.spinner("최신 데이터로 예측하고 Gemini에게 이유를 물어보는 중..."):
-            # 1. 최신 데이터(오늘자)로 예측 수행
-            today_scores = []
+        # 캐시 키 생성 (날짜 + 모델명)
+        today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
+        cache_key = f"{selected_model_name}_{today_str}"
+        
+        # 이미 분석한 결과가 있는지 확인
+        if cache_key in st.session_state.gemini_insights:
+            st.success(f"⚡ 저장된 분석 결과 (Date: {today_str})")
+            cached_data = st.session_state.gemini_insights[cache_key]
             
-            for ticker in valid_tickers:
-                try:
-                    df = full_data[ticker]
-                    # 가장 최근 데이터 행 가져오기
-                    last_row = df.iloc[[-1]] 
-                    last_date = last_row.index[0].strftime('%Y-%m-%d')
-                    
-                    # Feature 추출 및 스케일링
-                    feats = last_row[feature_cols].values
-                    feats_scaled = scaler.transform(feats)
-                    
-                    # 예측
-                    score = model.predict(feats_scaled)[0]
-                    
-                    # Feature 값 저장 (Gemini 설명용)
-                    feat_dict = {
-                        "Disparity_5": f"{last_row['Disparity_5'].values[0]:.4f}",
-                        "Disparity_20": f"{last_row['Disparity_20'].values[0]:.4f}",
-                        "RSI": f"{last_row['RSI'].values[0]:.2f}",
-                        "Volatility": f"{last_row['Volatility'].values[0]:.4f}",
-                        "Momentum_1M": f"{last_row['Momentum_1M'].values[0]:.2%}"
-                    }
-                    
-                    today_scores.append({
-                        "Ticker": ticker,
-                        "Score": score,
-                        "Date": last_date,
-                        "Features": feat_dict
-                    })
-                except Exception as e:
-                    pass
+            # 카드 표시
+            c1, c2, c3 = st.columns(3)
+            cols = [c1, c2, c3]
+            for i, item in enumerate(cached_data['top_3']):
+                with cols[i]:
+                    st.info(f"**{i+1}위: {item['Ticker']}**\n\nAI Score: {item['Score']:.4f}")
             
-            # Top 3 선정
-            today_scores.sort(key=lambda x: x['Score'], reverse=True)
-            top_3 = today_scores[:3]
+            st.markdown(cached_data['insight'])
             
-            if top_3:
-                # 2. 결과 카드 표시
-                c1, c2, c3 = st.columns(3)
-                cols = [c1, c2, c3]
-                
-                prompt_context = f"Model Type: {model_type}\nTarget Strategy: Buy Top 3 scores daily.\n\nTop 3 Recommended Stocks:\n"
-                
-                for i, item in enumerate(top_3):
-                    with cols[i]:
-                        st.info(f"**{i+1}위: {item['Ticker']}**\n\nAI Score: {item['Score']:.4f}")
-                        # Gemini 프롬프트 구성
-                        prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.4f})\n   - Indicators: {item['Features']}\n"
-                
-                # 3. Gemini Insight 생성
-                prompt_context += "\nBased on the technical indicators provided (RSI, MA Disparity, Volatility, Momentum), act as a Quantitative Analyst and explain WHY the model likely selected these stocks. Focus on the quantitative rationale (e.g., 'Oversold condition', 'Momentum breakout'). Write in Korean."
-                
-                try:
-                    insight_model = genai.GenerativeModel("gemini-3-flash-preview")
-                    response = insight_model.generate_content(prompt_context)
-                    insight_text = response.text
+        else:
+            if st.button("🚀 추천 종목 분석 실행 (Gemini)"):
+                with st.spinner("최신 데이터로 예측하고 Gemini에게 이유를 물어보는 중..."):
+                    # 저장된 모델 정보 로드
+                    saved_info = st.session_state.trained_models[selected_model_name]
+                    model = saved_info['model']
+                    scaler = saved_info['scaler']
+                    feature_cols = saved_info['feature_cols']
+                    full_data = saved_info['full_data']
+                    valid_tickers = saved_info['valid_tickers']
                     
-                    st.success("🤖 **Gemini's Insight**")
-                    st.markdown(insight_text)
+                    today_scores = []
                     
-                except Exception as e:
-                    st.error(f"Gemini 분석 중 오류: {e}")
-            else:
-                st.warning("예측 가능한 데이터가 없습니다.")
+                    for ticker in valid_tickers:
+                        try:
+                            df = full_data[ticker]
+                            # 가장 최근 데이터 행
+                            last_row = df.iloc[[-1]] 
+                            last_date = last_row.index[0].strftime('%Y-%m-%d')
+                            
+                            feats = last_row[feature_cols].values
+                            feats_scaled = scaler.transform(feats)
+                            score = model.predict(feats_scaled)[0]
+                            
+                            feat_dict = {
+                                "Disparity_5": f"{last_row['Disparity_5'].values[0]:.4f}",
+                                "Disparity_20": f"{last_row['Disparity_20'].values[0]:.4f}",
+                                "RSI": f"{last_row['RSI'].values[0]:.2f}",
+                                "Volatility": f"{last_row['Volatility'].values[0]:.4f}",
+                                "Momentum_1M": f"{last_row['Momentum_1M'].values[0]:.2%}"
+                            }
+                            
+                            today_scores.append({
+                                "Ticker": ticker,
+                                "Score": score,
+                                "Date": last_date,
+                                "Features": feat_dict
+                            })
+                        except:
+                            pass
+                    
+                    # Top 3 선정
+                    today_scores.sort(key=lambda x: x['Score'], reverse=True)
+                    top_3 = today_scores[:3]
+                    
+                    if top_3:
+                        # Gemini 프롬프트
+                        prompt_context = f"Model Type: {selected_model_name}\nTarget Strategy: Buy Top 3 scores daily.\n\nTop 3 Recommended Stocks:\n"
+                        for i, item in enumerate(top_3):
+                            prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.4f})\n   - Indicators: {item['Features']}\n"
+                        prompt_context += "\nBased on the technical indicators provided (RSI, MA Disparity, Volatility, Momentum), act as a Quantitative Analyst and explain WHY the model likely selected these stocks. Focus on the quantitative rationale. Write in Korean."
+                        
+                        try:
+                            insight_model = genai.GenerativeModel("gemini-3-flash-preview")
+                            response = insight_model.generate_content(prompt_context)
+                            insight_text = response.text
+                            
+                            # 결과 캐싱
+                            st.session_state.gemini_insights[cache_key] = {
+                                "top_3": top_3,
+                                "insight": insight_text
+                            }
+                            
+                            # 화면 표시 (리로드 필요 없이 바로 표시)
+                            st.experimental_rerun()
+                            
+                        except Exception as e:
+                            st.error(f"Gemini 분석 중 오류: {e}")
+                    else:
+                        st.warning("데이터 부족으로 예측할 수 없습니다.")
