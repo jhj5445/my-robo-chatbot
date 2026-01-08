@@ -304,14 +304,17 @@ elif selection == "📄 Macro Takling Point":
     if not reports:
         st.warning("표시할 리포트 파일이 없습니다.")
     else:
-        # 2단 레이아웃: 선택창 / 뷰어
-        col1, col2 = st.columns([1, 3])
+    reports = get_reports()
 
-        with col1:
-            st.markdown("### 리포트 목록")
+    if not reports:
+        st.warning("표시할 리포트 파일이 없습니다.")
+    else:
+        # 네비게이션(리포트 목록)을 사이드바에 배치하여 스크롤 시에도 고정되도록 변경
+        with st.sidebar:
+            st.divider() # 메뉴와 구분선
+            st.markdown("### 📑 리포트 목록")
             
             # 1. 카테고리 필터링
-            # 전체 카테고리 추출 및 "전체" 옵션 추가
             categories = sorted(list(set([r["index"] for r in reports])))
             categories.insert(0, "All")
             
@@ -334,22 +337,25 @@ elif selection == "📄 Macro Takling Point":
                 # 선택된 리포트 정보 찾기
                 selected_report = next((r for r in reports if r["display"] == selected_option), None)
 
-        with col2:
-            if selected_report:
-                st.markdown(f"### 📑 {selected_report['index']} ({selected_report['date']})")
+        # 메인 화면: 리포트 뷰어 (이제 전체 너비 사용)
+        if selected_report:
+            st.markdown(f"### 📑 {selected_report['index']} ({selected_report['date']})")
+            
+            try:
+                with open(selected_report["filename"], "r", encoding="utf-8") as f:
+                    html_content = f.read()
                 
-                # HTML 파일 읽어서 표시
-                try:
-                    with open(selected_report["filename"], "r", encoding="utf-8") as f:
-                        html_content = f.read()
-                    
-                    # 사용자의 요청대로 HTML 원본 그대로 표시하기 위해 iframe(components.html) 방식 복구
-                    # 스크롤 문제를 최소화하기 위해 내용 길이에 따른 동적 높이 계산 적용
-                    # 대략적인 라인 수 * 라인당 높이 픽셀 + 여유버퍼
-                    line_count = len(html_content.splitlines())
-                    estimated_height = max(1000, line_count * 25 + 200)
+                # 높이 계산 로직 개선 (너무 길지 않게 튜닝)
+                # HTML 태그들이 많으므로 라인 수 * 15px 정도로 축소 계산 (기존 25px -> 15px)
+                line_count = len(html_content.splitlines())
+                
+                # 라인 수가 너무 적으면(minified) 기본 높이 부여, 아니면 라인 수 비례
+                if line_count < 50:
+                    estimated_height = 1200
+                else:
+                    estimated_height = max(800, line_count * 15 + 50)
 
-                    components.html(html_content, height=estimated_height, scrolling=True)
-                    
-                except Exception as e:
-                    st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+                components.html(html_content, height=estimated_height, scrolling=True)
+                
+            except Exception as e:
+                st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
