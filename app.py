@@ -4,6 +4,9 @@ import os
 import glob
 import re
 import streamlit.components.v1 as components
+import yfinance as yf
+import plotly.express as px
+import pandas as pd
 
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
@@ -213,7 +216,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
     st.title("🤖 로보어드바이저 상담")
