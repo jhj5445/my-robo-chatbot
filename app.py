@@ -82,7 +82,7 @@ model = genai.GenerativeModel(
 )
 
 # 4. 웹 화면 UI 구성 (Streamlit)
-st.set_page_config(page_title="로보어드바이저 챗봇", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="미래에셋 로보 챗봇", page_icon="🤖", layout="wide")
 
 # OP.GG 스타일 커스텀 CSS 적용 (Light Theme)
 st.markdown(
@@ -207,10 +207,10 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Talking Point"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
-    st.title("🤖 로보어드바이저 상담")
+    st.title("🤖 미래에셋 로보어드바이저 상담")
     st.caption("FAQ 데이터를 기반으로 AI가 답변해 드립니다.")
 
     if "messages" not in st.session_state:
@@ -272,8 +272,8 @@ if selection == "🤖 챗봇":
             except Exception as e:
                 st.error(f"오류가 발생했습니다: {e}")
 
-elif selection == "📄 Macro Talking Point":
-    st.title("📄 Macro Talking Point 뷰어")
+elif selection == "📄 Macro Takling Point":
+    st.title("📄 Macro Talking Point")
     st.caption("각 지수와 날짜별 리포트를 확인하세요.")
 
     # 리포트 파일 스캔 함수
@@ -343,7 +343,15 @@ elif selection == "📄 Macro Talking Point":
                     with open(selected_report["filename"], "r", encoding="utf-8") as f:
                         html_content = f.read()
                     
-                    # Streamlit 컴포넌트로 HTML 렌더링 (스크롤 가능하게 높이 지정)
-                    components.html(html_content, height=800, scrolling=True)
+                    # Iframe 방식(components.html) 대신 st.markdown을 사용하여 자연스러운 스크롤 구현
+                    # 리포트 스타일이 앱 스타일과 충돌하지 않도록 별도 div로 감싸고 백그라운드 지정
+                    st.markdown(
+                        f"""
+                        <div style="background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                            {html_content}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
                 except Exception as e:
                     st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
