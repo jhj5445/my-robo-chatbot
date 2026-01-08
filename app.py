@@ -344,8 +344,12 @@ elif selection == "📄 Macro Takling Point":
                         html_content = f.read()
                     
                     # 사용자의 요청대로 HTML 원본 그대로 표시하기 위해 iframe(components.html) 방식 복구
-                    # 스크롤 불편함을 줄이기 위해 높이를 충분히(1000px) 설정
-                    components.html(html_content, height=1000, scrolling=True)
+                    # 스크롤 문제를 최소화하기 위해 내용 길이에 따른 동적 높이 계산 적용
+                    # 대략적인 라인 수 * 라인당 높이 픽셀 + 여유버퍼
+                    line_count = len(html_content.splitlines())
+                    estimated_height = max(1000, line_count * 25 + 200)
+
+                    components.html(html_content, height=estimated_height, scrolling=True)
                     
                 except Exception as e:
                     st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
