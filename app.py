@@ -1093,3 +1093,4 @@ elif selection == "🤖 AI 모델 테스팅":
                         except Exception as e:
                             st.error(f"Gemini 분석 중 오류: {e}")
                     else:
+                        st.warning("데이터 부족으로 예측할 수 없습니다.")
