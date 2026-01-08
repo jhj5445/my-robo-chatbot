@@ -106,9 +106,33 @@ st.markdown(
             background-color: #1c2836;
         }
         
-        /* 사이드바 내 텍스트 색상 조정 */
-        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] label, [data-testid="stSidebar"] div {
+        /* 사이드바 내 텍스트 색상 조정 (더 구체적으로) */
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p {
             color: #ffffff !important;
+        }
+
+        /* 라디오 버튼 스타일 커스텀 (사이드바 메뉴) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            background-color: transparent;
+            color: #b0b8c1 !important; /* 기본: 회색 */
+            padding: 10px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            margin-bottom: 2px;
+            cursor: pointer;
+        }
+        
+        /* 라디오 버튼 선택된 항목 */
+        [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"] {
+             background-color: #5383e8 !important; /* 선택시 블루 배경 */
+             color: #ffffff !important; /* 선택시 흰글씨 */
+             font-weight: bold;
+        }
+        
+        /* 라디오 버튼 호버 효과 */
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+             background-color: #24354a; /* 호버시 약간 밝은 네이비 */
+             color: #ffffff !important;
         }
 
         /* 헤더 배경색 */
@@ -183,7 +207,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 리포트 뷰어"])
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 리포트 뷰어"], label_visibility="collapsed")
 
 if selection == "🤖 챗봇":
     st.title("🤖 미래에셋 로보어드바이저 상담")
