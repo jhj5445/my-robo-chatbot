@@ -335,6 +335,25 @@ elif selection == "📄 Macro Takling Point":
 
         # 메인 화면: 리포트 뷰어 (이제 전체 너비 사용)
         if selected_report:
+            
+            # 리포트 변경 시 스크롤을 맨 위로 초기화 (JS Injection)
+            current_report_key = selected_report["filename"]
+            if "last_viewed_report" not in st.session_state:
+                st.session_state["last_viewed_report"] = None
+
+            if st.session_state["last_viewed_report"] != current_report_key:
+                st.session_state["last_viewed_report"] = current_report_key
+                components.html(
+                    """
+                    <script>
+                        // 상위 윈도우(메인 화면) 스크롤을 맨 위로 이동
+                        window.parent.scrollTo({top: 0, behavior: 'instant'});
+                    </script>
+                    """,
+                    height=0,
+                    width=0
+                )
+
             st.markdown(f"### 📑 {selected_report['index']} ({selected_report['date']})")
             
             try:
