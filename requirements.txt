@@ -2,3 +2,5 @@ streamlit
 google-generativeai
 yfinance
 plotly
+scikit-learn
+lightgbm
