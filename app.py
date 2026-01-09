@@ -1563,10 +1563,45 @@ elif selection == "🔍 기술적 패턴 스캐너":
         # 결과 출력
         st.divider()
         if results:
-            st.success(f"총 {len(results)}개 종목에서 특이 패턴이 발견되었습니다!")
+            # ---------------------------------------------------------
+            # 필터링 UI 추가
+            # ---------------------------------------------------------
+            # 1. 모든 발견된 패턴 수집 (중복 제거)
+            all_patterns = set()
+            for r in results:
+                for p in r['Patterns']:
+                    cleaned_p = p.split(' (')[0] # 괄호 뒤 설명 제거하고 키워드만 (옵션)
+                    # 여기선 전체 문구 그대로 사용
+                    all_patterns.add(p)
+            
+            sorted_patterns = sorted(list(all_patterns))
+            
+            col_f1, col_f2 = st.columns([3, 1])
+            with col_f1:
+                selected_filters = st.multiselect(
+                    "🔍 원하는 패턴만 골라보기 (복수 선택 가능)", 
+                    options=sorted_patterns,
+                    placeholder="모든 결과 보기"
+                )
+                
+            # 2. 필터링 로직
+            filtered_results = []
+            if not selected_filters:
+                filtered_results = results
+            else:
+                for r in results:
+                    # 선택된 필터 중 하나라도 포함하고 있으면 통과 (OR 조건)
+                    # 교집합이 있으면 True
+                    if set(r['Patterns']).intersection(set(selected_filters)):
+                        filtered_results.append(r)
+            
+            with col_f2:
+                st.metric("검색 결과", f"{len(filtered_results)} / {len(results)}")
+
+            st.success(f"조건에 맞는 종목 {len(filtered_results)}개를 찾았습니다!")
             
             # 보기 좋게 카드 형태로 출력 혹은 데이터프레임
-            for item in results:
+            for item in filtered_results:
                 with st.container():
                     c1, c2, c3 = st.columns([1, 1.5, 3])
                     c1.subheader(item['Ticker'])
