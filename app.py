@@ -1595,14 +1595,31 @@ elif selection == "🔍 기술적 패턴 스캐너":
                 placeholder="모든 결과 보기"
             )
             
+            # 필터 모드 선택 (Radio Button) - 가로로 배치
+            filter_mode = st.radio(
+                "조건 매칭 방식", 
+                ["하나라도 포함 (OR)", "모두 포함 (AND)"],
+                horizontal=True,
+                help="OR: 선택한 조건 중 하나라도 있으면 표시합니다.\nAND: 선택한 조건을 모두 만족해야 표시합니다."
+            )
+            
         # 2. 필터링 로직
         filtered_results = []
         if not selected_filters:
             filtered_results = results
         else:
             for r in results:
-                if set(r['Patterns']).intersection(set(selected_filters)):
-                    filtered_results.append(r)
+                result_patterns = set(r['Patterns'])
+                filter_patterns = set(selected_filters)
+                
+                if "OR" in filter_mode:
+                    # OR: 교집합이 있으면 True
+                    if result_patterns.intersection(filter_patterns):
+                        filtered_results.append(r)
+                else:
+                    # AND: 필터가 결과의 부분집합이어야 함 (필터 조건을 모두 만족)
+                    if filter_patterns.issubset(result_patterns):
+                        filtered_results.append(r)
         
         with col_f2:
             st.metric("검색 결과", f"{len(filtered_results)} / {len(results)}")
