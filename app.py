@@ -1450,6 +1450,10 @@ elif selection == "🔍 기술적 패턴 스캐너":
 
     # 2. 스캔 실행
     if st.button("🛰️ 패턴 스캔 시작"):
+        # Session State 초기화
+        if 'scan_results' not in st.session_state:
+            st.session_state.scan_results = []
+            
         results = []
         
         status_text = st.empty()
@@ -1493,6 +1497,7 @@ elif selection == "🔍 기술적 패턴 스캐너":
                 
                 # ---------------- [패턴 인식 엔진] ----------------
                 detected_patterns = []
+                detailed_info = [] # 상세 정보 (RSI 값 등)
                 
                 # 최신 데이터
                 curr_price = df['Close'].iloc[-1]
@@ -1524,9 +1529,11 @@ elif selection == "🔍 기술적 패턴 스캐너":
                 curr_rsi = rsi.iloc[-1]
                 
                 if curr_rsi < 30:
-                    detected_patterns.append(f"🟢 RSI 과매도 ({curr_rsi:.1f}) - 반등 기대")
+                    detected_patterns.append("🟢 RSI 과매도 (반등 기대)")
+                    detailed_info.append(f"RSI: {curr_rsi:.1f}")
                 elif curr_rsi > 70:
-                    detected_patterns.append(f"🔴 RSI 과매수 ({curr_rsi:.1f}) - 조정 주의")
+                    detected_patterns.append("🔴 RSI 과매수 (조정 주의)")
+                    detailed_info.append(f"RSI: {curr_rsi:.1f}")
                     
                 # 3. 볼린저 밴드 (돌파)
                 std = df['Close'].rolling(20).std()
@@ -1549,7 +1556,8 @@ elif selection == "🔍 기술적 패턴 스캐너":
                         "Ticker": ticker,
                         "Price": f"${curr_price:.2f}",
                         "Change": f"{(curr_price - prev_price)/prev_price:.2%}",
-                        "Patterns": detected_patterns
+                        "Patterns": detected_patterns,
+                        "Details": detailed_info
                     })
                     
             except Exception as e:
@@ -1560,56 +1568,57 @@ elif selection == "🔍 기술적 패턴 스캐너":
         status_text.empty()
         progress_bar.empty()
         
-        # 결과 출력
-        st.divider()
-        if results:
-            # ---------------------------------------------------------
-            # 필터링 UI 추가
-            # ---------------------------------------------------------
-            # 1. 모든 발견된 패턴 수집 (중복 제거)
-            all_patterns = set()
-            for r in results:
-                for p in r['Patterns']:
-                    cleaned_p = p.split(' (')[0] # 괄호 뒤 설명 제거하고 키워드만 (옵션)
-                    # 여기선 전체 문구 그대로 사용
-                    all_patterns.add(p)
-            
-            sorted_patterns = sorted(list(all_patterns))
-            
-            col_f1, col_f2 = st.columns([3, 1])
-            with col_f1:
-                selected_filters = st.multiselect(
-                    "🔍 원하는 패턴만 골라보기 (복수 선택 가능)", 
-                    options=sorted_patterns,
-                    placeholder="모든 결과 보기"
-                )
-                
-            # 2. 필터링 로직
-            filtered_results = []
-            if not selected_filters:
-                filtered_results = results
-            else:
-                for r in results:
-                    # 선택된 필터 중 하나라도 포함하고 있으면 통과 (OR 조건)
-                    # 교집합이 있으면 True
-                    if set(r['Patterns']).intersection(set(selected_filters)):
-                        filtered_results.append(r)
-            
-            with col_f2:
-                st.metric("검색 결과", f"{len(filtered_results)} / {len(results)}")
+        # 결과를 Session State에 저장
+        st.session_state.scan_results = results
 
+    # 3. 결과 표시 (Session State 사용)
+    if 'scan_results' in st.session_state and st.session_state.scan_results:
+        results = st.session_state.scan_results
+        
+        st.divider()
+        # ---------------------------------------------------------
+        # 필터링 UI
+        # ---------------------------------------------------------
+        # 1. 모든 발견된 패턴 수집 (중복 제거 & 단순화된 태그 사용)
+        all_patterns = set()
+        for r in results:
+            for p in r['Patterns']:
+                all_patterns.add(p)
+        
+        sorted_patterns = sorted(list(all_patterns))
+        
+        col_f1, col_f2 = st.columns([3, 1])
+        with col_f1:
+            selected_filters = st.multiselect(
+                "🔍 원하는 패턴만 골라보기 (복수 선택 가능)", 
+                options=sorted_patterns,
+                placeholder="모든 결과 보기"
+            )
+            
+        # 2. 필터링 로직
+        filtered_results = []
+        if not selected_filters:
+            filtered_results = results
+        else:
+            for r in results:
+                if set(r['Patterns']).intersection(set(selected_filters)):
+                    filtered_results.append(r)
+        
+        with col_f2:
+            st.metric("검색 결과", f"{len(filtered_results)} / {len(results)}")
+
+        if filtered_results:
             st.success(f"조건에 맞는 종목 {len(filtered_results)}개를 찾았습니다!")
             
-            # 보기 좋게 카드 형태로 출력 혹은 데이터프레임
             for item in filtered_results:
                 with st.container():
                     c1, c2, c3 = st.columns([1, 1.5, 3])
                     c1.subheader(item['Ticker'])
                     c2.metric("현재가", item['Price'], item['Change'])
                     
-                    # 뱃지 형태로 패턴 표시
                     with c3:
                         st.write("**발견된 패턴:**")
+                        # 패턴 뱃지
                         for pat in item['Patterns']:
                             if "매수" in pat or "반등" in pat or "Golden" in pat:
                                 st.success(pat)
@@ -1617,7 +1626,13 @@ elif selection == "🔍 기술적 패턴 스캐너":
                                 st.error(pat)
                             else:
                                 st.info(pat)
+                        # 상세 정보 (RSI 값 등)
+                        if item.get('Details'):
+                            st.caption(", ".join(item['Details']))
                     st.divider()
         else:
-            st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
+            st.warning("선택한 필터에 맞는 결과가 없습니다.")
+
+    elif 'scan_results' in st.session_state and not st.session_state.scan_results:
+         st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
 
