@@ -13,7 +13,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 import lightgbm as lgb
 import numpy as np
+import numpy as np
 import scipy.optimize as sco
+from pykrx import stock
+import time
+from datetime import datetime, timedelta
 
 
 # 1. API 키 설정 (Google AI Studio에서 발급받은 키 입력)
@@ -280,7 +284,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너", "🔎 ETF 구성 종목 검색"], label_visibility="collapsed")
 
 import requests
 
@@ -1653,3 +1657,195 @@ elif selection == "🔍 기술적 패턴 스캐너":
     elif 'scan_results' in st.session_state and not st.session_state.scan_results:
          st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
 
+
+# -----------------------------------------------------------------------------
+# 🔎 ETF 구성 종목 검색 (Reverse Search)
+# -----------------------------------------------------------------------------
+elif selection == "🔎 ETF 구성 종목 검색":
+    st.title("🔎 ETF 구성 종목 검색 (Reverse Search)")
+    st.caption("특정 종목을 담고 있는 ETF를 검색하고, 비중 순으로 정렬합니다. (KRX 실시간 데이터 기반)")
+
+    # 1. 최신 영업일 구하기 (데이터가 있는 날짜)
+    @st.cache_data(ttl=3600*12) # 12시간 캐시
+    def get_latest_biz_date():
+        # 오늘부터 역순으로 7일간 확인하여 가장 최근 종가가 있는 날짜 찾기
+        for i in range(7):
+            date = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+            try:
+                # KOSPI 아무 종목(예: 삼성전자 005930)의 종가를 조회해서 데이터가 있는지 확인
+                df = stock.get_market_ohlcv(date, date, "005930")
+                if not df.empty:
+                    return date
+            except:
+                pass
+        return datetime.now().strftime("%Y%m%d") # 실패 시 오늘 날짜 반환
+
+    target_date = get_latest_biz_date()
+    st.info(f"📅 데이터 기준일: **{target_date[:4]}-{target_date[4:6]}-{target_date[6:]}** (KRX)")
+
+    # 2. 데이터 수집 및 캐싱
+    @st.cache_data(ttl=3600*24, show_spinner=False) # 24시간 캐시 (매우 오래 걸리므로)
+    def get_all_etf_data(date):
+        """
+        모든 ETF의 구성 종목(PDF) 데이터를 수집하여 Dictionary 형태로 반환합니다.
+        Key: Ticker, Value: Data (Name, PDF_DataFrame)
+        """
+        # A. ETF 리스트 가져오기
+        tickers = stock.get_etf_ticker_list(date)
+        
+        etf_data = {}
+        error_count = 0
+        
+        # 진행률 표시 (최초 실행 시에만 보임)
+        progress_text = "KRX에서 모든 ETF 데이터(PDF)를 수집 중입니다... (최초 1회 실행 시 3~5분 소요)"
+        my_bar = st.progress(0, text=progress_text)
+        
+        total = len(tickers)
+        
+        for i, ticker in enumerate(tickers):
+            try:
+                name = stock.get_etf_ticker_name(ticker)
+                # PDF(구성종목) 가져오기
+                pdf = stock.get_etf_portfolio_deposit_file(ticker, date)
+                
+                # 데이터 유효성 검사 (빈 데이터프레임 무시)
+                if pdf is not None and not pdf.empty:
+                    etf_data[ticker] = {
+                        "name": name,
+                        "pdf": pdf # Columns: [계약수, 금액, 비중] 등 (차이는 있을 수 있음)
+                    }
+            except Exception as e:
+                error_count += 1
+                # print(f"Error fetching {ticker}: {e}")
+            
+            # 진행률 업데이트 (너무 자주하면 느려지므로 5% 단위 or 10개 단위)
+            if i % 10 == 0:
+                my_bar.progress((i + 1) / total, text=f"{progress_text} ({i+1}/{total})")
+                
+        my_bar.empty()
+        
+        if error_count > 0:
+            st.warning(f"{error_count}개의 ETF 데이터를 가져오는 데 실패했습니다 (상장폐지 등 이유).")
+            
+        return etf_data
+
+    # 데이터 로딩 Trigger
+    with st.spinner("데이터베이스를 동기화 중입니다... 잠시만 기다려주세요."):
+        all_etf_data = get_all_etf_data(target_date)
+
+    # 3. 검색 UI
+    st.divider()
+    search_query = st.text_input("검색할 종목명을 입력하세요 (예: 삼성전자, NAVER)", placeholder="종목명 입력 후 Enter").strip()
+
+    if search_query:
+        # A. 검색 로직
+        found_etfs = []
+        
+        # 사용자가 입력한 게 티커인지 이름인지 모름 -> 이름으로 매칭 시도
+        # pykrx의 PDF 데이터에는 종목코드가 인덱스이고, 종목명은 없을 수 있음.
+        # 따라서 "삼성전자"를 "005930"으로 변환하거나, PDF 내에 종목명이 있는지 확인해야 함.
+        # get_etf_portfolio_deposit_file() 결과는 보통 인덱스=티커, 컬럼=[계약수, 금액, 비중] 형태임. 종목명이 없음.
+        # 해결책:
+        # 1. KOSPI/KOSDAQ 전 종목 마스터 데이터를 가져와서 {이름: 티커} 매핑을 만듦.
+        # 2. 사용자가 입력한 "삼성전자" -> "005930" 변환.
+        # 3. 각 ETF의 PDF 인덱스(티커)에 "005930"이 있는지 확인.
+        
+        @st.cache_data
+        def get_stock_name_map(date):
+            # 코스피 + 코스닥 전 종목 가져오기
+            kospi = stock.get_market_ticker_list(date, market="KOSPI")
+            kosdaq = stock.get_market_ticker_list(date, market="KOSDAQ")
+            
+            name_map = {}
+            # 이름 -> 티커 (역방향 검색용)
+            for t in kospi:
+                try:
+                    name = stock.get_market_ticker_name(t)
+                    name_map[name] = t
+                except: pass
+            for t in kosdaq:
+                try:
+                    name = stock.get_market_ticker_name(t)
+                    name_map[name] = t
+                except: pass
+                
+            return name_map
+
+        name_map = get_stock_name_map(target_date)
+        
+        # 검색어 매칭 (정확치 & 포함)
+        target_ticker = name_map.get(search_query) # 정확히 일치
+        
+        # 정확히 일치하지 않으면 포함 검색 (첫 번째 발견된 것)
+        if not target_ticker:
+            candidates = [name for name in name_map.keys() if search_query.upper() in name.upper()]
+            if len(candidates) > 0:
+                # 선택지 제공? 아니면 첫번째?
+                # UX상 모호하면 가장 유사한 것 선택 or Selectbox
+                if len(candidates) == 1:
+                    target_ticker = name_map[candidates[0]]
+                    st.success(f"'{candidates[0]}' ({target_ticker}) 종목으로 검색합니다.")
+                else:
+                    st.info(f"검색어 '{search_query}'와 유사한 종목: {', '.join(candidates[:5])} ...")
+                    selected_name = st.selectbox("종목을 선택하세요:", candidates)
+                    target_ticker = name_map[selected_name]
+            else:
+                st.error("해당하는 종목을 찾을 수 없습니다.")
+                st.stop()
+        
+        # B. ETF 필터링
+        result_list = []
+        
+        for etf_ticker, data in all_etf_data.items():
+            pdf_df = data['pdf']
+            # pdf_df index is stock ticker
+            # Check if target_ticker is in index
+            if target_ticker in pdf_df.index:
+                row = pdf_df.loc[target_ticker]
+                # 컬럼명이 조금씩 다를 수 있으므로 비중 컬럼 찾기
+                # 보통 '비중' 또는 'Constituent Weight' 등
+                weight = 0
+                if '비중' in pdf_df.columns:
+                    weight = row['비중']
+                elif '금액' in pdf_df.columns: 
+                    # 금액만 있고 비중 없으면 전체 합 대비 비율 계산
+                    total_amt = pdf_df['금액'].sum()
+                    if total_amt > 0:
+                        weight = (row['금액'] / total_amt) * 100
+                
+                result_list.append({
+                    "ETF 코드": etf_ticker,
+                    "ETF명": data['name'],
+                    "종목 비중(%)": weight,
+                    "보유 금액": row['금액'] if '금액' in pdf_df.columns else 0
+                })
+
+        # C. 결과 출력
+        if result_list:
+            df_result = pd.DataFrame(result_list)
+            # 비중 내림차순 정렬
+            df_result = df_result.sort_values(by="종목 비중(%)", ascending=False).reset_index(drop=True)
+            
+            st.success(f"총 {len(df_result)}개의 ETF가 해당 종목을 포함하고 있습니다.")
+            
+            # 테이블
+            st.dataframe(
+                df_result.style.format({"종목 비중(%)": "{:.2f}", "보유 금액": "{:,.0f}"}),
+                use_container_width=True
+            )
+            
+            # 차트 (상위 5개인지, 사용자 선택인지) -> 상위 10개 시각화
+            top_n = df_result.head(10)
+            fig = px.bar(
+                top_n, 
+                x="ETF명", 
+                y="종목 비중(%)", 
+                title=f"'{search_query}' 비중이 높은 ETF Top 10",
+                color="종목 비중(%)",
+                text="종목 비중(%)"
+            )
+            fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
+            
+        else:
+            st.warning("해당 종목을 포함하는 ETF가 없습니다.")
