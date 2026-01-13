@@ -1665,9 +1665,9 @@ elif selection == "🔎 ETF 구성 종목 검색":
     st.title("🔎 ETF 구성 종목 검색 (Reverse Search)")
     st.caption("특정 종목을 담고 있는 ETF를 검색하고, 비중 순으로 정렬합니다. (KRX 실시간 데이터 기반)")
 
-import FinanceDataReader as fdr
+    import FinanceDataReader as fdr
 
-# 1. 유효한 데이터가 있는 최신 영업일 구하기
+    # 1. 유효한 데이터가 있는 최신 영업일 구하기
     # (주의: fdr은 별도 날짜 체크 없이 최신 리스트를 가져오므로, 여기서는 단순히 오늘 날짜 또는 안전한 평일을 반환)
     @st.cache_data(ttl=3600*12) 
     def get_latest_biz_date():
