@@ -1749,9 +1749,11 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 "360200", # TIGER 미국나스닥100
             ]
             st.warning("⚠️ ETF 전체 리스트를 가져오지 못해 주요 11개 ETF만 스캔합니다.")
-        else:
             # st.success(f"총 {len(tickers)}개의 ETF 리스트를 확보했습니다.")
             pass
+            
+        etf_data = {}
+        error_count = 0
 
 
         
