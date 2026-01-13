@@ -1821,19 +1821,34 @@ elif selection == "🔎 ETF 구성 종목 검색":
         
         @st.cache_data
         def get_stock_name_map(date):
-            # pykrx의 get_market_ticker_list 등은 인코딩 문제가 발생할 수 있음
-            # 따라서 FDR을 사용하여 전 종목 리스트를 가져옴
+            # 1. FDR KRX 전체 리스트 시도
+            name_map = {}
             try:
-                # KRX 전 종목 (KOSPI + KOSDAQ + KONEX)
                 df_krx = fdr.StockListing('KRX')
-                if 'Symbol' in df_krx.columns and 'Name' in df_krx.columns:
-                     return df_krx.set_index('Name')['Symbol'].to_dict()
-                return {}
+                if not df_krx.empty:
+                    name_map = df_krx.set_index('Name')['Symbol'].to_dict()
             except Exception as e:
-                st.error(f"종목 리스트 조회 실패: {e}")
-                return {}
+                pass
+            
+            # 2. 실패하거나 비어있으면 KOSPI/KOSDAQ 개별 시도 (Fallback)
+            if not name_map:
+                try:
+                    df_kospi = fdr.StockListing('KOSPI')
+                    df_kosdaq = fdr.StockListing('KOSDAQ')
+                    if not df_kospi.empty:
+                        name_map.update(df_kospi.set_index('Name')['Symbol'].to_dict())
+                    if not df_kosdaq.empty:
+                        name_map.update(df_kosdaq.set_index('Name')['Symbol'].to_dict())
+                except:
+                    pass
+            
+            return name_map
 
         name_map = get_stock_name_map(target_date)
+        
+        # Debug Info (잠시 노출)
+        # st.caption(f"Debug: Loaded {len(name_map)} stocks for mapping.")
+
         
         # 검색어 매칭 (정확치 & 포함)
         target_ticker = name_map.get(search_query) # 정확히 일치
