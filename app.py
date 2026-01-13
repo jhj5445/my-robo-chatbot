@@ -1,5 +1,40 @@
 import streamlit as st
 import google.generativeai as genai
+import ssl
+import requests
+import warnings
+
+# -----------------------------------------------------------------------------
+# SSL Fix for FinanceDataReader & KRX (User Environment Specific)
+# -----------------------------------------------------------------------------
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+# Requests Verify Patch
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+warnings.simplefilter('ignore', InsecureRequestWarning)
+
+# Monkey-patch requests to disable verification by default
+if not hasattr(requests, '_original_get'):
+    requests._original_get = requests.get
+    requests._original_post = requests.post
+
+    def new_get(*args, **kwargs):
+        kwargs['verify'] = False
+        return requests._original_get(*args, **kwargs)
+
+    def new_post(*args, **kwargs):
+        kwargs['verify'] = False
+        return requests._original_post(*args, **kwargs)
+
+    requests.get = new_get
+    requests.post = new_post
+# -----------------------------------------------------------------------------
+
 import os
 import glob
 import re
