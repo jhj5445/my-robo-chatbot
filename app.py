@@ -1665,22 +1665,27 @@ elif selection == "🔎 ETF 구성 종목 검색":
     st.title("🔎 ETF 구성 종목 검색 (Reverse Search)")
     st.caption("특정 종목을 담고 있는 ETF를 검색하고, 비중 순으로 정렬합니다. (KRX 실시간 데이터 기반)")
 
-    # 1. 최신 영업일 구하기 (데이터가 있는 날짜)
-    @st.cache_data(ttl=3600*12) # 12시간 캐시
+    # 1. 유효한 데이터가 있는 최신 영업일 찾기 (ETF 리스트 호출로 검증)
+    @st.cache_data(ttl=3600*12) 
     def get_latest_biz_date():
-        # 오늘부터 역순으로 7일간 확인하여 가장 최근 종가가 있는 날짜 찾기
-        for i in range(7):
-            date = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        # 오늘부터 역순으로 10일간 확인
+        curr = datetime.now()
+        for i in range(10):
+            date = (curr - timedelta(days=i)).strftime("%Y%m%d")
             try:
-                # KOSPI 아무 종목(예: 삼성전자 005930)의 종가를 조회해서 데이터가 있는지 확인
-                df = stock.get_market_ohlcv(date, date, "005930")
-                if not df.empty:
+                # 단순히 OHLC만 확인하는게 아니라, 실제 문제가 발생한 ETF 리스트 함수를 호출해본다.
+                # pykrx가 특정 날짜에서 포맷 에러(KeyError)를 뱉는 경우가 있으므로 직접 검증.
+                tickers = stock.get_etf_ticker_list(date)
+                if tickers and len(tickers) > 0:
                     return date
-            except:
-                pass
-        return datetime.now().strftime("%Y%m%d") # 실패 시 오늘 날짜 반환
+            except Exception:
+                # 에러 발생 시(휴장일, 데이터 누락, pykrx 파싱 에러 등) 하루 전으로 이동
+                continue
+        # 전부 실패하면 오늘 날짜 반환 (어차피 에러나겠지만 로직상)
+        return curr.strftime("%Y%m%d")
 
     target_date = get_latest_biz_date()
+
     st.info(f"📅 데이터 기준일: **{target_date[:4]}-{target_date[4:6]}-{target_date[6:]}** (KRX)")
 
     # 2. 데이터 수집 및 캐싱
