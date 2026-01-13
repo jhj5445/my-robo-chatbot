@@ -10,3 +10,4 @@ requests
 pykrx
 setuptools
 finance-datareader
+html5lib
