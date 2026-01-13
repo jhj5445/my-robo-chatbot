@@ -1839,15 +1839,27 @@ elif selection == "🔎 ETF 구성 종목 검색":
                         name_map.update(df_kospi.set_index('Name')['Symbol'].to_dict())
                     if not df_kosdaq.empty:
                         name_map.update(df_kosdaq.set_index('Name')['Symbol'].to_dict())
-                except:
-                    pass
+            # 3. 최후의 수단: 주요 종목 하드코딩 (네트워크/파싱 전면 실패 시 대비)
+            if not name_map:
+                name_map = {
+                    "삼성전자": "005930",
+                    "SK하이닉스": "000660",
+                    "NAVER": "035420",
+                    "카카오": "035720",
+                    "LG에너지솔루션": "373220",
+                    "현대차": "005380",
+                    "POSCO홀딩스": "005490",
+                    "기아": "000270",
+                    "KB금융": "105560"
+                }
             
             return name_map
 
         name_map = get_stock_name_map(target_date)
         
-        # Debug Info (잠시 노출)
-        # st.caption(f"Debug: Loaded {len(name_map)} stocks for mapping.")
+        # Debug Info: 활성화해서 상태 확인
+        st.warning(f"🔍 Debug Info: Loaded {len(name_map)} stocks. " 
+                   f"Sample: {list(name_map.keys())[:5] if name_map else 'Empty'}")
 
         
         # 검색어 매칭 (정확치 & 포함)
