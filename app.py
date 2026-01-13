@@ -1887,30 +1887,83 @@ elif selection == "🔎 ETF 구성 종목 검색":
         # B. ETF 필터링
         result_list = []
         
+        # Debug: 데이터가 비어있는지 확인
+        if not all_etf_data:
+            st.error("ETF 데이터를 하나도 수집하지 못했습니다. (KRX/네이버 접속 실패)")
+        else:
+            # st.info(f"Debug: {len(all_etf_data)}개 ETF 데이터 스캔 중...")
+            pass
+
         for etf_ticker, data in all_etf_data.items():
             pdf_df = data['pdf']
-            # pdf_df index is stock ticker
-            # Check if target_ticker is in index
+            found = False
+            row = None
+            
+            # 1. Ticker로 검색 (pykrx 데이터인 경우 Index가 Ticker)
             if target_ticker in pdf_df.index:
                 row = pdf_df.loc[target_ticker]
+                found = True
+            
+            # 2. Ticker가 컬럼에 있는지 확인
+            elif 'Code' in pdf_df.columns and target_ticker in pdf_df['Code'].values:
+                # 해당 로우 찾기
+                row = pdf_df[pdf_df['Code'] == target_ticker].iloc[0]
+                found = True
+
+            # 3. 종목명으로 검색 (Naver 크롤링 데이터인 경우 Ticker가 없을 수 있음)
+            if not found:
+                # 문자열 컬럼들 중에서 종목명이 포함된 행 찾기
+                # search_query: "삼성전자"
+                for col in pdf_df.columns:
+                    # 데이터 타입이 문자열이거나 object인 경우
+                    if pdf_df[col].dtype == object or pdf_df[col].dtype == str:
+                        # 정확히 일치하거나 포함되는지 확인 (여기선 정확 일치 선호하나, 공백 이슈 등으로 포함 사용)
+                        # 하지만 "삼성" 검색 시 "삼성전자"가 걸리는건 의도된 동작.
+                        # "삼성전자" 검색 시 "삼성전자" 행을 찾아야 함.
+                        
+                        # 안전한 처리를 위해 string 변환 후 검색
+                        matches = pdf_df[pdf_df[col].astype(str).str.contains(search_query, na=False)]
+                        if not matches.empty:
+                            row = matches.iloc[0]
+                            found = True
+                            break
+            
+            if found and row is not None:
                 # 컬럼명이 조금씩 다를 수 있으므로 비중 컬럼 찾기
-                # 보통 '비중' 또는 'Constituent Weight' 등
                 weight = 0
-                if '비중' in pdf_df.columns:
-                    weight = row['비중']
-                elif '금액' in pdf_df.columns: 
+                
+                # 다양한 컬럼명 시도
+                cols = pdf_df.columns
+                weight_col = next((c for c in cols if '비중' in c), None) # '비중', '비중(%)', '구성비중' 등
+                amount_col = next((c for c in cols if '금액' in c or '평가액' in c), None) # '금액', '평가금액'
+                
+                if weight_col:
+                    weight = row[weight_col]
+                elif amount_col: 
                     # 금액만 있고 비중 없으면 전체 합 대비 비율 계산
-                    total_amt = pdf_df['금액'].sum()
-                    if total_amt > 0:
-                        weight = (row['금액'] / total_amt) * 100
+                    # 해당 컬럼의 합
+                    try:
+                        total_amt = pdf_df[amount_col].sum()
+                        if total_amt > 0:
+                            weight = (row[amount_col] / total_amt) * 100
+                    except:
+                        pass
+                
+                # 비중이 문자열인 경우 처리 (Naver 등)
+                if isinstance(weight, str):
+                    try:
+                        weight = float(weight.replace('%', '').strip())
+                    except:
+                        pass
                 
                 result_list.append({
                     "ETF 코드": etf_ticker,
                     "ETF명": data['name'],
                     "종목 비중(%)": weight,
-                    "보유 금액": row['금액'] if '금액' in pdf_df.columns else 0
+                    "보유 금액": row[amount_col] if amount_col else 0
                 })
 
+        # C. 결과 출력
         # C. 결과 출력
         if result_list:
             df_result = pd.DataFrame(result_list)
