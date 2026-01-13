@@ -1767,24 +1767,17 @@ elif selection == "🔎 ETF 구성 종목 검색":
         
         @st.cache_data
         def get_stock_name_map(date):
-            # 코스피 + 코스닥 전 종목 가져오기
-            kospi = stock.get_market_ticker_list(date, market="KOSPI")
-            kosdaq = stock.get_market_ticker_list(date, market="KOSDAQ")
-            
-            name_map = {}
-            # 이름 -> 티커 (역방향 검색용)
-            for t in kospi:
-                try:
-                    name = stock.get_market_ticker_name(t)
-                    name_map[name] = t
-                except: pass
-            for t in kosdaq:
-                try:
-                    name = stock.get_market_ticker_name(t)
-                    name_map[name] = t
-                except: pass
-                
-            return name_map
+            # pykrx의 get_market_ticker_list 등은 인코딩 문제가 발생할 수 있음
+            # 따라서 FDR을 사용하여 전 종목 리스트를 가져옴
+            try:
+                # KRX 전 종목 (KOSPI + KOSDAQ + KONEX)
+                df_krx = fdr.StockListing('KRX')
+                if 'Symbol' in df_krx.columns and 'Name' in df_krx.columns:
+                     return df_krx.set_index('Name')['Symbol'].to_dict()
+                return {}
+            except Exception as e:
+                st.error(f"종목 리스트 조회 실패: {e}")
+                return {}
 
         name_map = get_stock_name_map(target_date)
         
