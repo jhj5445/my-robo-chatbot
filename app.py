@@ -1665,45 +1665,41 @@ elif selection == "🔎 ETF 구성 종목 검색":
     st.title("🔎 ETF 구성 종목 검색 (Reverse Search)")
     st.caption("특정 종목을 담고 있는 ETF를 검색하고, 비중 순으로 정렬합니다. (KRX 실시간 데이터 기반)")
 
-    # 1. 유효한 데이터가 있는 최신 영업일 찾기 (ETF 리스트 호출로 검증)
+import FinanceDataReader as fdr
+
+# 1. 유효한 데이터가 있는 최신 영업일 구하기
+    # (주의: fdr은 별도 날짜 체크 없이 최신 리스트를 가져오므로, 여기서는 단순히 오늘 날짜 또는 안전한 평일을 반환)
     @st.cache_data(ttl=3600*12) 
     def get_latest_biz_date():
-        # 오늘부터 역순으로 10일간 확인
+        # ETF PDF 데이터를 가져올 때는 날짜가 중요하므로, 평일인지 체크
         curr = datetime.now()
-        for i in range(10):
-            date = (curr - timedelta(days=i)).strftime("%Y%m%d")
-            try:
-                # 단순히 OHLC만 확인하는게 아니라, 실제 문제가 발생한 ETF 리스트 함수를 호출해본다.
-                # pykrx가 특정 날짜에서 포맷 에러(KeyError)를 뱉는 경우가 있으므로 직접 검증.
-                tickers = stock.get_etf_ticker_list(date)
-                if tickers and len(tickers) > 0:
-                    return date
-            except Exception:
-                continue
-        # 전부 실패하면 None 반환 (크래시 방지)
-        return None
+        # 만약 주말이면 금요일로 이동
+        while curr.weekday() > 4:
+            curr -= timedelta(days=1)
+        return curr.strftime("%Y%m%d")
 
     target_date = get_latest_biz_date()
-
-    if target_date is None:
-        st.error("❌ KRX 데이터 서버에 접속할 수 없거나, 유효한 데이터를 가져올 수 없습니다. (일시적인 접속 장애 또는 차단일 수 있습니다)")
-        st.stop()
-
-
     st.info(f"📅 데이터 기준일: **{target_date[:4]}-{target_date[4:6]}-{target_date[6:]}** (KRX)")
 
     # 2. 데이터 수집 및 캐싱
-    @st.cache_data(ttl=3600*24, show_spinner=False) # 24시간 캐시 (매우 오래 걸리므로)
+    @st.cache_data(ttl=3600*24, show_spinner=False) # 24시간 캐시
     def get_all_etf_data(date):
         """
         모든 ETF의 구성 종목(PDF) 데이터를 수집하여 Dictionary 형태로 반환합니다.
         Key: Ticker, Value: Data (Name, PDF_DataFrame)
         """
-        # A. ETF 리스트 가져오기
-        tickers = stock.get_etf_ticker_list(date)
+        # A. ETF 리스트 가져오기 (pykrx 대신 fdr 사용 - 인코딩 이슈 우회)
+        try:
+            # KRX ETF 리스트 (Symbol, Name 등 포함)
+            etf_list_df = fdr.StockListing('ETF/KR')
+            tickers = etf_list_df['Symbol'].tolist()
+        except Exception as e:
+            st.error(f"ETF 리스트를 가져오는 중 오류 발생 (FDR): {e}")
+            return {}
         
         etf_data = {}
         error_count = 0
+
         
         # 진행률 표시 (최초 실행 시에만 보임)
         progress_text = "KRX에서 모든 ETF 데이터(PDF)를 수집 중입니다... (최초 1회 실행 시 3~5분 소요)"
@@ -1711,10 +1707,20 @@ elif selection == "🔎 ETF 구성 종목 검색":
         
         total = len(tickers)
         
+        # FDR에서 가져온 이름 매핑 (Name Column 확인 필요, 보통 'Name')
+        name_map = {}
+        if 'Name' in etf_list_df.columns:
+            name_map = etf_list_df.set_index('Symbol')['Name'].to_dict()
+        
+        total = len(tickers)
+        
         for i, ticker in enumerate(tickers):
             try:
-                name = stock.get_etf_ticker_name(ticker)
+                # FDR에서 이름 가져오기 (없으면 티커 사용)
+                name = name_map.get(str(ticker), str(ticker))
+                
                 # PDF(구성종목) 가져오기
+                # 만약 pykrx가 내부적으로 인코딩 에러를 일으키면 이 부분도 try-except로 넘어감
                 pdf = stock.get_etf_portfolio_deposit_file(ticker, date)
                 
                 # 데이터 유효성 검사 (빈 데이터프레임 무시)
