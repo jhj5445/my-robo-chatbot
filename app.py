@@ -1839,6 +1839,8 @@ elif selection == "🔎 ETF 구성 종목 검색":
                         name_map.update(df_kospi.set_index('Name')['Symbol'].to_dict())
                     if not df_kosdaq.empty:
                         name_map.update(df_kosdaq.set_index('Name')['Symbol'].to_dict())
+                except:
+                    pass
             # 3. 최후의 수단: 주요 종목 하드코딩 (네트워크/파싱 전면 실패 시 대비)
             if not name_map:
                 name_map = {
