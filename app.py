@@ -1724,16 +1724,35 @@ elif selection == "🔎 ETF 구성 종목 검색":
         Key: Ticker, Value: Data (Name, PDF_DataFrame)
         """
         # A. ETF 리스트 가져오기 (pykrx 대신 fdr 사용 - 인코딩 이슈 우회)
+        tickers = []
         try:
             # KRX ETF 리스트 (Symbol, Name 등 포함)
             etf_list_df = fdr.StockListing('ETF/KR')
             tickers = etf_list_df['Symbol'].tolist()
         except Exception as e:
-            st.error(f"ETF 리스트를 가져오는 중 오류 발생 (FDR): {e}")
-            return {}
+            # st.error(f"ETF 리스트를 가져오는 중 오류 발생 (FDR): {e}")
+            pass
         
-        etf_data = {}
-        error_count = 0
+        # Fallback: 리스트 가져오기 실패 시 주요 ETF 하드코딩
+        if not tickers:
+            tickers = [
+                "069500", # KODEX 200
+                "371460", # TIGER 차이나전기차SOLACTIVE
+                "122630", # KODEX 레버리지
+                "252670", # KODEX 200선물인버스2X
+                "233740", # KODEX 코스닥150레버리지
+                "251340", # KODEX 코스닥150선물인버스
+                "102110", # TIGER 200
+                "278530", # KODEX 200TR
+                "278540", # TIGER 200TR
+                "360750", # TIGER 미국S&P500
+                "360200", # TIGER 미국나스닥100
+            ]
+            st.warning("⚠️ ETF 전체 리스트를 가져오지 못해 주요 11개 ETF만 스캔합니다.")
+        else:
+            # st.success(f"총 {len(tickers)}개의 ETF 리스트를 확보했습니다.")
+            pass
+
 
         
         # 진행률 표시 (최초 실행 시에만 보임)
