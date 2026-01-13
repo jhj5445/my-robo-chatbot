@@ -1679,12 +1679,16 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 if tickers and len(tickers) > 0:
                     return date
             except Exception:
-                # 에러 발생 시(휴장일, 데이터 누락, pykrx 파싱 에러 등) 하루 전으로 이동
                 continue
-        # 전부 실패하면 오늘 날짜 반환 (어차피 에러나겠지만 로직상)
-        return curr.strftime("%Y%m%d")
+        # 전부 실패하면 None 반환 (크래시 방지)
+        return None
 
     target_date = get_latest_biz_date()
+
+    if target_date is None:
+        st.error("❌ KRX 데이터 서버에 접속할 수 없거나, 유효한 데이터를 가져올 수 없습니다. (일시적인 접속 장애 또는 차단일 수 있습니다)")
+        st.stop()
+
 
     st.info(f"📅 데이터 기준일: **{target_date[:4]}-{target_date[4:6]}-{target_date[6:]}** (KRX)")
 
