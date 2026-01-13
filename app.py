@@ -1749,24 +1749,43 @@ elif selection == "🔎 ETF 구성 종목 검색":
         
         total = len(tickers)
         
+        
         for i, ticker in enumerate(tickers):
+            pdf = None
             try:
-                # FDR에서 이름 가져오기 (없으면 티커 사용)
-                name = name_map.get(str(ticker), str(ticker))
+                # 1. pykrx 시도
+                try:
+                    pdf = stock.get_etf_portfolio_deposit_file(ticker, date)
+                except:
+                    pdf = None
+
+                # 2. 실패 시 Naver Finance 편법 크롤링 (html5lib 필요)
+                if pdf is None or pdf.empty:
+                    try:
+                        url = f"https://finance.naver.com/item/sise_pdf.naver?code={ticker}"
+                        # verify=False with warnings suppressed (already patched at top)
+                        dfs = pd.read_html(url, encoding='euc-kr') 
+                        if dfs:
+                            pdf = dfs[0]
+                            # 컬럼 표준화 (종목명, 비중% 등을 pykrx 포맷과 비슷하게 맞춤)
+                            # Naver: [종목명, 계약수, 금액, 비중(%)] 등인 경우가 많음
+                            if '구성종목(비중)' in pdf.columns: # 헤더가 좀 다를 수 있음
+                                pass 
+                            # 보통 컬럼이: ['구성종목(구성자산)', '주식/원화', '금액', '비중(%)'] 등
+                    except Exception as e_nav:
+                        pass
                 
-                # PDF(구성종목) 가져오기
-                # 만약 pykrx가 내부적으로 인코딩 에러를 일으키면 이 부분도 try-except로 넘어감
-                pdf = stock.get_etf_portfolio_deposit_file(ticker, date)
-                
-                # 데이터 유효성 검사 (빈 데이터프레임 무시)
+                # 데이터 유효성 검사
                 if pdf is not None and not pdf.empty:
+                    # FDR Name Map 사용
+                    name = name_map.get(str(ticker), str(ticker))
+                    
                     etf_data[ticker] = {
                         "name": name,
-                        "pdf": pdf # Columns: [계약수, 금액, 비중] 등 (차이는 있을 수 있음)
+                        "pdf": pdf 
                     }
             except Exception as e:
                 error_count += 1
-                # print(f"Error fetching {ticker}: {e}")
             
             # 진행률 업데이트 (너무 자주하면 느려지므로 5% 단위 or 10개 단위)
             if i % 10 == 0:
