@@ -1826,8 +1826,6 @@ elif selection == "🔎 ETF 구성 종목 검색":
                         if last_error is None:
                             last_error = f"Mobile API Error: {str(e_nav)}"
                         pass
-                            last_error = f"Mobile API Error: {str(e_nav)}"
-                        pass
 
                 # 3. 최후의 수단: Yahoo Finance (yfinance) - 해외 IP(Streamlit Cloud)에서 작동 가능
                 if pdf is None or pdf.empty:
