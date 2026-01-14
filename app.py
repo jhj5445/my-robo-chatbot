@@ -1787,7 +1787,9 @@ elif selection == "🔎 ETF 구성 종목 검색":
                     try:
                         url = f"https://finance.naver.com/item/sise_pdf.naver?code={ticker}"
                         # 반드시 requests를 사용해 verify=False 적용 (pd.read_html은 내부적으로 urllib 사용시 SSL 검증 할 수 있음)
-                        resp = requests.get(url, verify=False, timeout=5)
+                        # User-Agent 추가 (Bot 차단 방지)
+                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                        resp = requests.get(url, headers=headers, verify=False, timeout=5)
                         
                         # 인코딩 설정 (네이버는 EUC-KR)
                         dfs = pd.read_html(resp.text) 
