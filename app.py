@@ -3,6 +3,7 @@ import google.generativeai as genai
 import ssl
 import requests
 import warnings
+from io import StringIO
 
 # -----------------------------------------------------------------------------
 # SSL Fix for FinanceDataReader & KRX (User Environment Specific)
@@ -1791,14 +1792,22 @@ elif selection == "🔎 ETF 구성 종목 검색":
                         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                         resp = requests.get(url, headers=headers, verify=False, timeout=5)
                         
+                        if resp.status_code != 200:
+                            raise Exception(f"HTTP {resp.status_code}")
+                        
                         # 인코딩 설정 (네이버는 EUC-KR)
-                        dfs = pd.read_html(resp.text) 
+                        text = resp.text
+                        
+                        # 디버깅: '구성종목' 단어가 있는지 확인
+                        if '구성종목' not in text and 'sise_pdf' not in text:
+                             # 응답이 이상함 (로그인 페이지거나 차단 안내 등)
+                             pass
+
+                        dfs = pd.read_html(StringIO(text), flavor='bs4') 
                         
                         if dfs:
                             pdf = dfs[0]
                             # 컬럼 보정 (Naver Data Cleaning)
-                            # 보통 컬럼: [구성종목(구성자산), 수량, 금액, 비중(%), 평가손익, 현재가, 등락, 전일비]
-                            # pykrx 포맷과 호환되게 Rename 필요할 수 있음.
                             rename_map = {
                                 '구성종목(구성자산)': 'Name',
                                 '구성종목': 'Name',
@@ -1807,10 +1816,18 @@ elif selection == "🔎 ETF 구성 종목 검색":
                                 '금액': '금액'
                             }
                             pdf = pdf.rename(columns=rename_map)
+                        else:
+                            raise Exception("No tables found in HTML")
                             
                     except Exception as e_nav:
                         if last_error is None:
-                            last_error = str(e_nav)
+                            # 첫 번째 에러 상세 기록
+                            debug_snippet = ""
+                            try:
+                                if 'resp' in locals():
+                                    debug_snippet = resp.text[:200]
+                            except: pass
+                            last_error = f"{str(e_nav)} | Snippet: {debug_snippet}"
                         pass
                 
                 # 데이터 유효성 검사
