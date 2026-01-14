@@ -1730,6 +1730,12 @@ elif selection == "🔎 ETF 구성 종목 검색":
             # KRX ETF 리스트 (Symbol, Name 등 포함)
             etf_list_df = fdr.StockListing('ETF/KR')
             tickers = etf_list_df['Symbol'].tolist()
+            
+            # [테스트 모드] 너무 오래 걸리므로 상위 20개만 우선 테스트
+            # 테스트 완료 후 아래 두 줄 주석 처리 또는 삭제하면 전체 다운로드 가능
+            if len(tickers) > 20: 
+                 tickers = tickers[:20] 
+                 st.info(f"⚡ [테스트 모드] 빠른 확인을 위해 전체 {len(etf_list_df)}개 중 **상위 20개 ETF**만 스캔합니다.")
         except Exception as e:
             # st.error(f"ETF 리스트를 가져오는 중 오류 발생 (FDR): {e}")
             pass
