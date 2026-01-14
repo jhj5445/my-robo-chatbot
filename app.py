@@ -321,7 +321,7 @@ st.markdown(
 # 사이드바 네비게이션
 with st.sidebar:
     st.title("메뉴")
-    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너", "🔎 ETF 구성 종목 검색"], label_visibility="collapsed")
+    selection = st.radio("이동할 페이지를 선택하세요:", ["🤖 챗봇", "📄 Macro Takling Point", "📈 전략 실험실 (Beta)", "🤖 AI 모델 테스팅", "⚖️ 포트폴리오 최적화", "🔍 기술적 패턴 스캐너", "🔎 ETF 구성 종목 검색", "🤖 로보 어드바이저 (Demo)"], label_visibility="collapsed")
 
 import requests
 
@@ -1790,41 +1790,55 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 except:
                     pdf = None
 
-                # 2. 실패 시 Naver Mobile API 사용 (JSON)
+                # 2. 실패 시: Daum Finance API (Kakao Pay) - 차단 가능성 낮음
                 if pdf is None or pdf.empty:
                     try:
-                        # Mobile API가 훨씬 안정적이고 차단이 덜함
-                        url = f"https://m.stock.naver.com/api/item/getEtfHoldings.nhn?code={ticker}"
+                        # Daum URL: https://finance.daum.net/api/etf/constituents?symbolCode=A069500
+                        # Ticker에 'A' 붙여야 함
+                        daum_ticker = f"A{ticker}"
+                        url = f"https://finance.daum.net/api/etf/constituents?symbolCode={daum_ticker}"
                         
                         headers = {
-                            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-                            'Referer': f'https://m.stock.naver.com/item/main.nhn?code={ticker}'
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Referer': f'https://finance.daum.net/quotes/{daum_ticker}',
+                            'Accept': 'application/json, text/plain, */*',
+                            'Host': 'finance.daum.net'
                         }
                         
                         resp = requests.get(url, headers=headers, verify=False, timeout=5)
                         
                         if resp.status_code == 200:
                             data_json = resp.json()
-                            if "result" in data_json and "etfHoldings" in data_json["result"]:
-                                holdings = data_json["result"]["etfHoldings"]
-                                # JSON -> DataFrame 변환
-                                # Fields: nm(이름), cd(코드), pct(비중)
+                            if "data" in data_json:
+                                holdings = data_json["data"]
                                 temp_df = pd.DataFrame(holdings)
+                                
                                 if not temp_df.empty:
-                                    # 컬럼 이름 매핑
+                                    # 컬럼 매핑 needed
+                                    # Daum fields: symbolCode, name, tradePrice, weight
                                     rename_map = {
-                                        'nm': 'Name',
-                                        'pct': '비중',
-                                        'cd': 'Code' # 코드는 추가정보로 활용
+                                        'name': 'Name',
+                                        'weight': '비중',
+                                        'tradePrice': '금액', # 정확히는 현재가지만 금액 대용으로 사용 가능 여부 확인. 
+                                        # 하지만 ETF PDF의 '금액'은 '보유금액'이므로 tradePrice(현재가)와 다름.
+                                        # 비중이 핵심.
+                                        'symbolCode': 'Code'
                                     }
                                     pdf = temp_df.rename(columns=rename_map)
-                                    # 금액 정보가 없을 수 있음 (비중 위주)
+                                    # Code에서 'A' 제거 (A005930 -> 005930)
+                                    if 'Code' in pdf.columns:
+                                        pdf['Code'] = pdf['Code'].str.replace('A', '', regex=False)
+                                    
+                                    # 비중이 0~100 사이 숫자인지 확인. Daum은 보통 0.25 (1% 미만) or 25.0 ?
+                                    # 확인 결과 Daum은 0.15 (=0.15%) 식으로 줄 수도 있고 15.0일 수도 있음. 
+                                    # 일단 그대로 둠.
+                                    
                                     if '금액' not in pdf.columns:
-                                        pdf['금액'] = 0
+                                         pdf['금액'] = 0
                             
-                    except Exception as e_nav:
+                    except Exception as e_daum:
                         if last_error is None:
-                            last_error = f"Mobile API Error: {str(e_nav)}"
+                            last_error = f"Daum API Error: {str(e_daum)}"
                         pass
 
                 # 3. 최후의 수단: Yahoo Finance (yfinance) - 해외 IP(Streamlit Cloud)에서 작동 가능
@@ -2096,3 +2110,231 @@ elif selection == "🔎 ETF 구성 종목 검색":
             
         else:
             st.warning("해당 종목을 포함하는 ETF가 없습니다.")
+
+# -----------------------------------------------------------------------------
+# 🤖 로보 어드바이저 (Demo) - React Port
+# -----------------------------------------------------------------------------
+def page_robo_advisor():
+    st.title("🤖 로보 어드바이저 (Demo)")
+    
+    # -----------------------------
+    # 1. Mock Data Definition
+    # -----------------------------
+    ongoing_changes = [
+        {"id": 1, "name": "KCGI샐러리맨증권자투자신탁(주식)", "type": "out", "before": 10.68, "after": 0, "diff": "-10.68%", "region": "글로벌", "category": "글로벌주식", "tags": ["#글로벌가치주", "#지배구조개선", "#ESG테마"]},
+        {"id": 3, "name": "한화천연자원증권자투자신탁(주식)", "type": "new", "before": 0, "after": 4.74, "diff": "+4.74%", "region": "글로벌", "category": "글로벌주식", "tags": ["#에너지/광물", "#천연자원기업", "#실물자산투자"]},
+        {"id": 2, "name": "하나PIMCO글로벌인컴혼합자산(채권)", "type": "buy", "before": 2.52, "after": 8.72, "diff": "+6.20%", "region": "글로벌", "category": "선진국채권1", "tags": ["#글로벌채권", "#월지급식", "#안정적수익"]},
+        {"id": 4, "name": "교보악사파워인덱스(주식)", "type": "new", "before": 0, "after": 2.88, "diff": "+2.88%", "region": "한국", "category": "국내주식", "tags": ["#KOSPI200", "#국내대형주", "#지수추종"]},
+        {"id": 5, "name": "키움슈로더이머징위너스(주식혼합)", "type": "sell", "before": 9.07, "after": 7.75, "diff": "-1.32%", "region": "신흥국", "category": "신흥국주식", "tags": ["#신흥국성장주", "#아시아/남미", "#적극운용"]},
+        {"id": 6, "name": "미래에셋전략배분TDF2050", "type": "sell", "before": 33.00, "after": 32.63, "diff": "-0.37%", "region": "글로벌", "category": "TDF", "tags": ["#은퇴타겟2050", "#자동자산배분", "#글로벌분산"]}
+    ]
+
+    portfolio_profiles = {
+        '성장형': {
+            "desc": "시장 수익률을 초과하는 고수익을 추구하며, 주식 자산 비중을 가장 높게 가져갑니다.",
+            "color": "#DC2626", # bg-red-600
+            "riskLevel": 1,
+            "items": [
+                {"name": "피델리티글로벌테크놀로지증권자투자신탁", "category": "선진국주식", "ratio": 40.0, "tags": ["#글로벌기술주", "#성장주", "#IT섹터"]},
+                {"name": "키움슈로더이머징위너스증권자투자신탁", "category": "신흥국주식", "ratio": 30.0, "tags": ["#신흥국", "#하이리스크", "#고성장"]},
+                {"name": "미래에셋차이나그로스증권자투자신탁", "category": "중국주식", "ratio": 20.0, "tags": ["#중국성장주", "#본토투자", "#소비재"]},
+                {"name": "한화천연자원증권자투자신탁", "category": "대체투자", "ratio": 10.0, "tags": ["#원자재", "#변동성", "#인플레이션"]},
+            ]
+        },
+        '성장추구형': {
+            "desc": "적극적인 자산 배분을 통해 자산 증식을 목표로 하며, 주식 위주에 채권을 일부 혼합합니다.",
+            "color": "#EA580C", # bg-orange-600
+            "riskLevel": 2,
+            "items": [
+                {"name": "미래에셋전략배분TDF2050혼합자산", "category": "TDF", "ratio": 35.0, "tags": ["#은퇴타겟2050", "#주식비중확대", "#글로벌분산"]},
+                {"name": "KCGI샐러리맨증권자투자신탁", "category": "글로벌주식", "ratio": 25.0, "tags": ["#글로벌우량주", "#ESG", "#지배구조"]},
+                {"name": "키움슈로더이머징위너스증권자투자신탁", "category": "신흥국주식", "ratio": 15.0, "tags": ["#이머징마켓", "#고성장", "#적극운용"]},
+                {"name": "삼성미국S&P500인덱스증권자투자신탁", "category": "선진국주식", "ratio": 15.0, "tags": ["#미국지수", "#성장주", "#달러자산"]},
+                {"name": "하나PIMCO글로벌인컴혼합자산", "category": "해외채권", "ratio": 10.0, "tags": ["#방어자산", "#채권", "#월지급"]},
+            ]
+        },
+        '위험중립형': {
+            "desc": "위험과 수익의 균형을 중시하며, 주식과 채권을 균형 있게 배분합니다.",
+            "color": "#2563EB", # bg-blue-600
+            "riskLevel": 3,
+            "items": [
+                {"name": "미래에셋전략배분TDF2035혼합자산", "category": "TDF", "ratio": 40.0, "tags": ["#자산배분", "#글로벌분산", "#중위험"]},
+                {"name": "삼성미국S&P500인덱스증권자투자신탁", "category": "선진국주식", "ratio": 20.0, "tags": ["#미국대표지수", "#달러자산", "#대형주"]},
+                {"name": "하나PIMCO글로벌인컴혼합자산", "category": "해외채권", "ratio": 20.0, "tags": ["#글로벌채권", "#안정성", "#인컴수익"]},
+                {"name": "한화천연자원증권자투자신탁", "category": "대체투자", "ratio": 10.0, "tags": ["#원자재", "#인플레이션헷지", "#실물자산"]},
+                {"name": "Plus신종개인용MMF", "category": "유동성", "ratio": 10.0, "tags": ["#유동성관리", "#단기자금", "#수시입출금"]},
+            ]
+        },
+        '안정추구형': {
+            "desc": "원금 손실 위험을 낮추면서 시중 금리 +α 수익을 추구합니다.",
+            "color": "#0D9488", # bg-teal-600
+            "riskLevel": 4,
+            "items": [
+                {"name": "하나PIMCO글로벌인컴혼합자산", "category": "해외채권", "ratio": 40.0, "tags": ["#글로벌채권", "#월지급", "#안정수익"]},
+                {"name": "미래에셋솔로몬중장기국공채", "category": "국내채권", "ratio": 30.0, "tags": ["#국공채", "#중기투자", "#안전자산"]},
+                {"name": "미래에셋전략배분TDF2025혼합자산", "category": "TDF", "ratio": 20.0, "tags": ["#보수적배분", "#채권혼합", "#은퇴임박"]},
+                {"name": "교보악사파워인덱스증권자투자신탁", "category": "국내주식", "ratio": 10.0, "tags": ["#KOSPI200", "#인덱스", "#시장수익률"]},
+            ]
+        },
+        '안정형': {
+            "desc": "예금 수준의 안정성을 추구하며, 단기 채권 및 유동성 자산 위주로 운용합니다.",
+            "color": "#16A34A", # bg-green-600
+            "riskLevel": 5,
+            "items": [
+                {"name": "Plus신종개인용MMF", "category": "유동성", "ratio": 60.0, "tags": ["#수시입출금", "#원금보존", "#초단기"]},
+                {"name": "우리단기채권증권자투자신탁", "category": "국내채권", "ratio": 30.0, "tags": ["#국공채", "#안정수익", "#단기채"]},
+                {"name": "하나PIMCO글로벌인컴혼합자산", "category": "해외채권", "ratio": 10.0, "tags": ["#글로벌채권", "#월지급", "#채권혼합"]},
+            ]
+        }
+    }
+
+    current_holdings = [
+        {"id": 101, "name": "미래에셋전략배분TDF2050", "ratio": 32.63, "amount": "40,920,000", "profit": "+15.2%"},
+        {"id": 102, "name": "하나PIMCO글로벌인컴혼합자산", "ratio": 8.72, "amount": "10,930,000", "profit": "+3.1%"},
+        {"id": 103, "name": "키움슈로더이머징위너스", "ratio": 7.75, "amount": "9,720,000", "profit": "-1.5%"},
+        {"id": 104, "name": "한화천연자원증권자투자신탁", "ratio": 4.74, "amount": "5,940,000", "profit": "0.0%"},
+        {"id": 105, "name": "교보악사파워인덱스", "ratio": 2.88, "amount": "3,610,000", "profit": "0.0%"},
+        {"id": 106, "name": "Plus신종개인용MMF", "ratio": 43.28, "amount": "54,290,000", "profit": "-"},
+    ]
+    
+    # -----------------------------
+    # 2. UI Layout
+    # -----------------------------
+    tab1, tab2 = st.tabs(["📊 오늘의 포트폴리오", "💰 계좌 현황"])
+
+    # TAB 1: Portfolio View
+    with tab1:
+        col_header, col_hist = st.columns([4, 1])
+        with col_header:
+            st.caption("기준일: 2026.01.14")
+            st.subheader("AI 추천 포트폴리오 ✅")
+        with col_hist:
+            st.button("📜 이력", key="history_btn")
+
+        # Investment Profile Selection
+        profile_names = list(portfolio_profiles.keys())
+        selected_profile = st.radio("투자 성향 선택", profile_names, index=0, horizontal=True)
+        
+        profile = portfolio_profiles[selected_profile]
+        
+        # Strategy Banner
+        st.markdown(f"""
+        <div style="background-color: {profile['color']}; padding: 20px; border-radius: 15px; color: white; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="background-color: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                    🎯 위험등급 {profile['riskLevel']}등급
+                </span>
+                {'<span style="background-color: white; color: 10px; color: #DC2626; padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">나의 투자성향</span>' if selected_profile == '성장형' else ''}
+            </div>
+            <h3 style="margin: 0 0 5px 0; font-size: 20px; font-weight: bold; color:white;">{selected_profile} 전략</h3>
+            <p style="margin: 0; font-size: 13px; opacity: 0.9;">{profile['desc']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"**구성 상품 ({len(profile['items'])}개)**")
+        
+        for item in profile['items']:
+            with st.container():
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    st.markdown(f"**{item['name']}**")
+                    st.caption(f"{item['category']} | {' '.join(item['tags'])}")
+                with c2:
+                    st.metric("비중", f"{item['ratio']}%")
+                st.divider()
+        
+        st.button(f"{selected_profile}으로 변경 예약하기", use_container_width=True, type="primary")
+        st.caption("* 변경 예약 시 다음 리밸런싱 주기에 반영됩니다.")
+
+    # TAB 2: Status View
+    with tab2:
+        is_rebalancing = st.toggle("리밸런싱 진행중 (Demo)", value=True)
+        
+        # Account Info
+        st.markdown("### Global Quants EMP (성장형)")
+        st.caption("연금저축 | 123-45-678910")
+        
+        # Performance Card (Styled)
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #1f2937, #111827); color: white; padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                <div>
+                    <div style="color: #9ca3af; font-size: 12px; margin-bottom: 4px;">총 평가금액</div>
+                    <div style="font-size: 24px; font-weight: bold;">125,430,000원</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="color: #9ca3af; font-size: 12px; margin-bottom: 4px;">누적 수익률</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #f87171;">+12.4% 📈</div>
+                </div>
+            </div>
+            <div style="border-top: 1px solid #374151; padding-top: 15px; display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;">
+                        <span style="color: #9ca3af;">벤치마크 (KOSPI)</span>
+                        <span>+9.2%</span>
+                    </div>
+                    <div style="background-color: #374151; height: 6px; border-radius: 3px; overflow: hidden;">
+                        <div style="background-color: #9ca3af; width: 70%; height: 100%;"></div>
+                    </div>
+                </div>
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;">
+                        <span style="color: #9ca3af;">내 포트폴리오</span>
+                        <span style="color: #f87171;">+12.4%</span>
+                    </div>
+                    <div style="background-color: #374151; height: 6px; border-radius: 3px; overflow: hidden;">
+                        <div style="background-color: #ef4444; width: 90%; height: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if is_rebalancing:
+            st.info("🔄 **리밸런싱 진행 중**: 시장 상황 변화에 맞춰 자산 비중을 '성장형' 모델로 조정하고 있습니다. (진행률: 65%)")
+            
+            st.subheader("실시간 변경 현황 (Live)")
+            
+            # Group by category logic
+            cats = {}
+            for item in ongoing_changes:
+                cat = item['category']
+                if cat not in cats: cats[cat] = []
+                cats[cat].append(item)
+            
+            # Sort by impact (simple logic: number of items)
+            sorted_cats = sorted(cats.keys(), key=lambda k: len(cats[k]), reverse=True)
+            
+            for cat in sorted_cats:
+                with st.expander(f"{cat} ({len(cats[cat])}건)", expanded=True):
+                    for item in cats[cat]:
+                        cols = st.columns([3, 1, 1, 1])
+                        with cols[0]:
+                            type_badge_color = {
+                                "new": "🔴 신규", "out": "🔵 전량매도", "buy": "🔺 확대", "sell": "🔻 축소"
+                            }
+                            st.write(f"**{item['name']}**")
+                            st.caption(f"{type_badge_color.get(item['type'], item['type'])} | {' '.join(item['tags'])}")
+                        with cols[1]:
+                            st.metric("이전", f"{item['before']}%")
+                        with cols[2]:
+                            st.metric("변동", item['diff'], delta_color="off") # delta handled visually in text
+                        with cols[3]:
+                             st.metric("현재", f"{item['after']}%")
+        else:
+            st.subheader("현재 보유 자산")
+            df_holdings = pd.DataFrame(current_holdings)
+            st.dataframe(
+                df_holdings,
+                column_config={
+                    "name": "종목명",
+                    "ratio": st.column_config.NumberColumn("비중 (%)", format="%.2f%%"),
+                    "amount": "평가금액",
+                    "profit": "수익률"
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+
+if selection == "🤖 로보 어드바이저 (Demo)":
+    page_robo_advisor()
