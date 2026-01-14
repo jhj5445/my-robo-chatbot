@@ -1786,28 +1786,38 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 # 2. 실패 시 Naver Finance 편법 크롤링 (html5lib/lxml 필요)
                 if pdf is None or pdf.empty:
                     try:
+                        # URL: .naver or .nhn (Try .naver first, but some environments behave differently)
+                        # Referer is important for Naver
                         url = f"https://finance.naver.com/item/sise_pdf.naver?code={ticker}"
-                        # 반드시 requests를 사용해 verify=False 적용 (pd.read_html은 내부적으로 urllib 사용시 SSL 검증 할 수 있음)
-                        # User-Agent 추가 (Bot 차단 방지)
-                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                        
+                        headers = {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Referer': f'https://finance.naver.com/item/main.naver?code={ticker}'
+                        }
+                        
                         resp = requests.get(url, headers=headers, verify=False, timeout=5)
                         
                         if resp.status_code != 200:
-                            raise Exception(f"HTTP {resp.status_code}")
-                        
-                        # 인코딩 설정 (네이버는 EUC-KR)
+                            # 404면 .nhn으로 재시도 (Legacy support or blocked redirection)
+                            url_legacy = f"https://finance.naver.com/item/sise_pdf.nhn?code={ticker}"
+                            resp = requests.get(url_legacy, headers=headers, verify=False, timeout=5)
+                            if resp.status_code != 200:
+                                raise Exception(f"HTTP {resp.status_code} at {url}")
+
+                        # 인코딩 설정
                         text = resp.text
                         
-                        # 디버깅: '구성종목' 단어가 있는지 확인
+                        # 디버깅: '구성종목' 등 핵심 키워드 유무 확인
                         if '구성종목' not in text and 'sise_pdf' not in text:
-                             # 응답이 이상함 (로그인 페이지거나 차단 안내 등)
+                             # pass but keep going to read_html
                              pass
 
                         dfs = pd.read_html(StringIO(text), flavor='bs4') 
                         
                         if dfs:
                             pdf = dfs[0]
-                            # 컬럼 보정 (Naver Data Cleaning)
+                            # 컬럼 보정
+
                             rename_map = {
                                 '구성종목(구성자산)': 'Name',
                                 '구성종목': 'Name',
