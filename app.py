@@ -2115,8 +2115,36 @@ elif selection == "🔎 ETF 구성 종목 검색":
 # 🤖 로보 어드바이저 (Demo) - React Port
 # -----------------------------------------------------------------------------
 def page_robo_advisor():
-    st.title("🤖 로보 어드바이저 (Demo)")
-    
+    # 모바일 레이아웃을 위한 CSS (폰트, 너비 제한 등)
+    st.markdown("""
+        <style>
+        /* 모바일 화면 시뮬레이션 컨테이너 */
+        .mobile-container {
+            max-width: 450px;
+            margin: 0 auto;
+            background-color: #F9FAFB; /* gray-50 */
+            min-height: 100vh;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #1F2937; /* gray-800 */
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            justify-content: center;
+        }
+        /* 카드 스타일 유틸리티 */
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            border: 1px solid #F3F4F6;
+            margin-bottom: 12px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     # -----------------------------
     # 1. Mock Data Definition
     # -----------------------------
@@ -2198,143 +2226,252 @@ def page_robo_advisor():
     ]
     
     # -----------------------------
-    # 2. UI Layout
+    # 2. UI Layout (Mobile Frame)
     # -----------------------------
-    tab1, tab2 = st.tabs(["📊 오늘의 포트폴리오", "💰 계좌 현황"])
-
-    # TAB 1: Portfolio View
-    with tab1:
-        col_header, col_hist = st.columns([4, 1])
-        with col_header:
-            st.caption("기준일: 2026.01.14")
-            st.subheader("AI 추천 포트폴리오 ✅")
-        with col_hist:
-            st.button("📜 이력", key="history_btn")
-
-        # Investment Profile Selection
-        profile_names = list(portfolio_profiles.keys())
-        selected_profile = st.radio("투자 성향 선택", profile_names, index=0, horizontal=True)
+    # 중앙 정렬을 위한 3분할, 가운데 컬럼(col_mobile)만 사용
+    # Mobile Width Simulation
+    _, col_mobile, _ = st.columns([1, 2, 1])
+    
+    with col_mobile:
+        st.title("🤖 로보 어드바이저")
         
-        profile = portfolio_profiles[selected_profile]
-        
-        # Strategy Banner
-        st.markdown(f"""
-        <div style="background-color: {profile['color']}; padding: 20px; border-radius: 15px; color: white; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <span style="background-color: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+        tab1, tab2 = st.tabs(["📊 오늘의 포트폴리오", "💰 계좌 현황"])
+
+        # TAB 1: Portfolio View
+        with tab1:
+            col_header, col_hist = st.columns([4, 1])
+            with col_header:
+                st.caption("기준일: 2026.01.14")
+                st.subheader("AI 추천 포트폴리오 ✅")
+            with col_hist:
+                st.button("📜", key="history_btn", help="이력 보기")
+
+            # A. Investment Profile Selection
+            profile_names = list(portfolio_profiles.keys())
+            selected_profile = st.radio("투자 성향 선택", profile_names, index=0, horizontal=True)
+            
+            profile = portfolio_profiles[selected_profile]
+            is_my_profile = (selected_profile == '성장형')
+            
+            # HTML String Construction (Indentation Removed to prevent code block rendering)
+            profile_html = f"""
+<div style="background-color: {profile['color']}; padding: 24px; border-radius: 20px; color: white; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; overflow: hidden;">
+    <div style="position: absolute; right: -16px; top: -16px; background-color: rgba(255,255,255,0.1); width: 96px; height: 96px; border-radius: 50%; filter: blur(24px);"></div>
+    <div style="position: relative; z-index: 10;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="background-color: rgba(255,255,255,0.2); backdrop-filter: blur(4px); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; display: inline-flex; align-items: center;">
                     🎯 위험등급 {profile['riskLevel']}등급
                 </span>
-                {'<span style="background-color: white; color: 10px; color: #DC2626; padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">나의 투자성향</span>' if selected_profile == '성장형' else ''}
             </div>
-            <h3 style="margin: 0 0 5px 0; font-size: 20px; font-weight: bold; color:white;">{selected_profile} 전략</h3>
-            <p style="margin: 0; font-size: 13px; opacity: 0.9;">{profile['desc']}</p>
+            {'<span style="background-color: white; color: #DC2626; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">나의 투자성향</span>' if is_my_profile else ''}
         </div>
-        """, unsafe_allow_html=True)
+        <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 800; color:white;">{selected_profile} 전략</h3>
+        <p style="margin: 0; font-size: 13px; opacity: 0.9; color: rgba(255,255,255,0.9); line-height: 1.5;">{profile['desc']}</p>
+    </div>
+</div>
+"""
+            st.markdown(profile_html, unsafe_allow_html=True)
 
-        st.markdown(f"**구성 상품 ({len(profile['items'])}개)**")
-        
-        for item in profile['items']:
-            with st.container():
-                c1, c2 = st.columns([4, 1])
-                with c1:
-                    st.markdown(f"**{item['name']}**")
-                    st.caption(f"{item['category']} | {' '.join(item['tags'])}")
-                with c2:
-                    st.metric("비중", f"{item['ratio']}%")
-                st.divider()
-        
-        st.button(f"{selected_profile}으로 변경 예약하기", use_container_width=True, type="primary")
-        st.caption("* 변경 예약 시 다음 리밸런싱 주기에 반영됩니다.")
+            # B. Items List
+            st.markdown(f"**구성 상품 ({len(profile['items'])}개)**")
+            
+            for item in profile['items']:
+                # Card Style Container
+                with st.container():
+                    st.markdown(f"""
+                    <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="flex: 1; padding-right: 16px;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+                                <span style="font-size: 10px; background-color: #F3F4F6; color: #6B7280; padding: 2px 6px; border-radius: 4px; font-weight: 500;">{item['category']}</span>
+                            </div>
+                            <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold; color: #111827; line-height: 1.3;">{item['name']}</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                {''.join([f'<span style="font-size: 10px; color: #9CA3AF; background-color: #F9FAFB; padding: 2px 6px; border-radius: 4px;">{tag}</span>' for tag in item['tags']])}
+                            </div>
+                        </div>
+                        <div style="width: 50px; height: 50px; background-color: #F9FAFB; border-radius: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1px solid #E5E7EB;">
+                            <span style="font-size: 16px; font-weight: bold; color: #1F2937;">{item['ratio']}<span style="font-size: 10px;">%</span></span>
+                            <span style="font-size: 9px; color: #9CA3AF;">비중</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            st.button(f"{selected_profile}으로 변경 예약하기", use_container_width=True, type="primary")
+            st.caption("* 변경 예약 시 다음 리밸런싱 주기에 반영됩니다.", help="매월 말일 기준")
 
-    # TAB 2: Status View
-    with tab2:
-        is_rebalancing = st.toggle("리밸런싱 진행중 (Demo)", value=True)
-        
-        # Account Info
-        st.markdown("### Global Quants EMP (성장형)")
-        st.caption("연금저축 | 123-45-678910")
-        
-        # Performance Card (Styled)
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #1f2937, #111827); color: white; padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+        # TAB 2: Status View
+        with tab2:
+            is_rebalancing = st.toggle("리밸런싱 진행중 (Demo)", value=True)
+            
+            # Account Header
+            st.markdown("""
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
                 <div>
-                    <div style="color: #9ca3af; font-size: 12px; margin-bottom: 4px;">총 평가금액</div>
-                    <div style="font-size: 24px; font-weight: bold;">125,430,000원</div>
-                </div>
-                <div style="text-align: right;">
-                    <div style="color: #9ca3af; font-size: 12px; margin-bottom: 4px;">누적 수익률</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #f87171;">+12.4% 📈</div>
-                </div>
-            </div>
-            <div style="border-top: 1px solid #374151; padding-top: 15px; display: flex; gap: 10px;">
-                <div style="flex: 1;">
-                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;">
-                        <span style="color: #9ca3af;">벤치마크 (KOSPI)</span>
-                        <span>+9.2%</span>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="background-color: #F3F4F6; color: #4B5563; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">연금저축</span>
+                        <span style="font-size: 13px; font-weight: bold; color: #1F2937; text-decoration: underline; text-decoration-color: #D1D5DB; text-underline-offset: 4px;">123-45-678910</span>
                     </div>
-                    <div style="background-color: #374151; height: 6px; border-radius: 3px; overflow: hidden;">
-                        <div style="background-color: #9ca3af; width: 70%; height: 100%;"></div>
-                    </div>
-                </div>
-                <div style="flex: 1;">
-                    <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px;">
-                        <span style="color: #9ca3af;">내 포트폴리오</span>
-                        <span style="color: #f87171;">+12.4%</span>
-                    </div>
-                    <div style="background-color: #374151; height: 6px; border-radius: 3px; overflow: hidden;">
-                        <div style="background-color: #ef4444; width: 90%; height: 100%;"></div>
-                    </div>
+                    <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #111827;">Global Quants EMP</h2>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if is_rebalancing:
-            st.info("🔄 **리밸런싱 진행 중**: 시장 상황 변화에 맞춰 자산 비중을 '성장형' 모델로 조정하고 있습니다. (진행률: 65%)")
+            """, unsafe_allow_html=True)
             
-            st.subheader("실시간 변경 현황 (Live)")
+            # Dark Card (Performance) with Gradient
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #111827, #1F2937); color: white; padding: 20px; border-radius: 20px; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
+                <div style="position: absolute; right: -20px; top: -20px; background-color: rgba(255,255,255,0.05); width: 128px; height: 128px; border-radius: 50%; filter: blur(30px);"></div>
+                <div style="position: relative; z-index: 10;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                        <div>
+                            <div style="color: #9CA3AF; font-size: 12px; margin-bottom: 4px; font-weight: 500;">총 평가금액</div>
+                            <div style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">125,430,000원</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="color: #9CA3AF; font-size: 12px; margin-bottom: 4px; font-weight: 500;">누적 수익률</div>
+                            <div style="font-size: 20px; font-weight: 800; color: #F87171;">+12.4%</div>
+                        </div>
+                    </div>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; display: flex; gap: 12px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+                                <span style="color: #9CA3AF;">벤치마크 (KOSPI)</span>
+                                <span style="color: #E5E7EB; font-weight: bold;">+9.2%</span>
+                            </div>
+                            <div style="background-color: #374151; height: 6px; border-radius: 999px; overflow: hidden;">
+                                <div style="background-color: #9CA3AF; width: 70%; height: 100%;"></div>
+                            </div>
+                        </div>
+                        <div style="width: 1px; background-color: rgba(255,255,255,0.1);"></div>
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+                                <span style="color: #9CA3AF;">내 포트폴리오</span>
+                                <span style="color: #F87171; font-weight: bold;">+12.4%</span>
+                            </div>
+                            <div style="background-color: #374151; height: 6px; border-radius: 999px; overflow: hidden;">
+                                <div style="background-color: #EF4444; width: 90%; height: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Group by category logic
-            cats = {}
-            for item in ongoing_changes:
-                cat = item['category']
-                if cat not in cats: cats[cat] = []
-                cats[cat].append(item)
-            
-            # Sort by impact (simple logic: number of items)
-            sorted_cats = sorted(cats.keys(), key=lambda k: len(cats[k]), reverse=True)
-            
-            for cat in sorted_cats:
-                with st.expander(f"{cat} ({len(cats[cat])}건)", expanded=True):
-                    for item in cats[cat]:
-                        cols = st.columns([3, 1, 1, 1])
-                        with cols[0]:
-                            type_badge_color = {
-                                "new": "🔴 신규", "out": "🔵 전량매도", "buy": "🔺 확대", "sell": "🔻 축소"
-                            }
-                            st.write(f"**{item['name']}**")
-                            st.caption(f"{type_badge_color.get(item['type'], item['type'])} | {' '.join(item['tags'])}")
-                        with cols[1]:
-                            st.metric("이전", f"{item['before']}%")
-                        with cols[2]:
-                            st.metric("변동", item['diff'], delta_color="off") # delta handled visually in text
-                        with cols[3]:
-                             st.metric("현재", f"{item['after']}%")
-        else:
-            st.subheader("현재 보유 자산")
-            df_holdings = pd.DataFrame(current_holdings)
-            st.dataframe(
-                df_holdings,
-                column_config={
-                    "name": "종목명",
-                    "ratio": st.column_config.NumberColumn("비중 (%)", format="%.2f%%"),
-                    "amount": "평가금액",
-                    "profit": "수익률"
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            if is_rebalancing:
+                # Rebalancing Status Card
+                st.markdown("""
+                <div style="background-color: #2563EB; border-radius: 16px; padding: 16px; color: white; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+                    <div style="display: flex; items-center; gap: 8px; margin-bottom: 8px;">
+                        <!-- Spinner Icon simulation -->
+                        <span style="font-size: 16px;">🔄</span>
+                        <span style="font-weight: bold; font-size: 15px;">리밸런싱 진행 중</span>
+                    </div>
+                    <p style="font-size: 12px; color: #DBEAFE; margin: 0 0 12px 0; line-height: 1.4;">
+                        시장 상황 변화에 맞춰 자산 비중을 '성장형' 모델로 조정하고 있습니다.
+                    </p>
+                    <div style="background-color: #1E40AF; height: 6px; border-radius: 999px; overflow: hidden; margin-bottom: 6px;">
+                        <div style="background-color: white; width: 65%; height: 100%;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px; color: #BFDBFE;">
+                        <span>매도 완료</span>
+                        <span>매수 중 (65%)</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown("""
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #111827;">실시간 변경 현황</h3>
+                    <span style="background-color: #F3F4F6; color: #6B7280; font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: bold;">Live</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Group by category logic
+                cats = {}
+                for item in ongoing_changes:
+                    cat = item['category']
+                    if cat not in cats: cats[cat] = []
+                    cats[cat].append(item)
+                
+                sorted_cats = sorted(cats.keys(), key=lambda k: len(cats[k]), reverse=True)
+                
+                for cat in sorted_cats:
+                    # Category Header
+                    st.markdown(f"""
+                    <div style="background-color: #F9FAFB; padding: 10px 16px; border-top-left-radius: 12px; border-top-right-radius: 12px; border: 1px solid #F3F4F6; border-bottom: none; margin-top: 12px;">
+                        <span style="font-size: 12px; font-weight: bold; color: #374151;">{cat}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Items
+                    for idx, item in enumerate(cats[cat]):
+                        is_last = (idx == len(cats[cat]) - 1)
+                        border_style = "border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;" if is_last else ""
+                        
+                        # Type Badge Colors
+                        type_colors = {
+                            "new": ("#FEF2F2", "#DC2626", "신규편입"), # bg-red-50, text-red-600
+                            "out": ("#EFF6FF", "#2563EB", "전량매도"), # bg-blue-50, text-blue-600
+                            "buy": ("#FEF2F2", "#DC2626", "비중확대"),
+                            "sell": ("#EFF6FF", "#2563EB", "비중축소")
+                        }
+                        bg_c, text_c, label = type_colors.get(item['type'], ("#F3F4F6", "#6B7280", item['type']))
+                        
+                        diff_color = "#DC2626" if item['diff'].startswith('+') else "#2563EB"
+                        
+                        st.markdown(f"""
+                        <div style="background-color: white; padding: 16px; border: 1px solid #F3F4F6; {border_style} touch-action: manipulation;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                <div>
+                                    <div style="margin-bottom: 4px;">
+                                        <span style="background-color: {bg_c}; color: {text_c}; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">{label}</span>
+                                    </div>
+                                    <h4 style="margin: 0; font-size: 14px; font-weight: bold; color: #1F2937; margin-bottom: 4px;">{item['name']}</h4>
+                                    <div style="display: flex; gap: 4px;">
+                                        {''.join([f'<span style="font-size: 10px; color: #9CA3AF; border: 1px solid #F3F4F6; padding: 2px 6px; border-radius: 4px;">{tag}</span>' for tag in item['tags']])}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Visualization Before -> After -->
+                            <div style="display: flex; align-items: center; gap: 12px; background-color: #F9FAFB; padding: 10px; border-radius: 8px;">
+                                <div style="text-align: center; width: 40px;">
+                                    <div style="font-size: 9px; color: #9CA3AF; margin-bottom: 2px;">이전</div>
+                                    <div style="font-size: 11px; font-weight: 500; color: #6B7280;">{item['before']}%</div>
+                                </div>
+                                <div style="flex: 1; display: flex; align-items: center; gap: 4px;">
+                                    <div style="flex: 1; height: 1px; background-color: {bg_c};"></div>
+                                    <div style="background-color: {bg_c}; color: {text_c}; border: 1px solid {bg_c}; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: bold;">
+                                        {item['diff']}
+                                    </div>
+                                    <div style="flex: 1; height: 1px; background-color: {bg_c};"></div>
+                                </div>
+                                <div style="text-align: center; width: 40px;">
+                                    <div style="font-size: 9px; color: #9CA3AF; margin-bottom: 2px;">현재</div>
+                                    <div style="font-size: 11px; font-weight: bold; color: {text_c};">{item['after']}%</div>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            else:
+                st.subheader("현재 보유 자산")
+                for holding in current_holdings:
+                    profit_color = "#DC2626" if holding['profit'].startswith('+') else ("#2563EB" if holding['profit'].startswith('-') else "#6B7280")
+                    st.markdown(f"""
+                    <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold; color: #1F2937;">{holding['name']}</h4>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-size: 12px; color: #6B7280;">{holding['amount']}원</span>
+                                <span style="font-size: 10px; background-color: #F3F4F6; color: #6B7280; padding: 2px 6px; border-radius: 4px;">{holding['ratio']}%</span>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="font-size: 14px; font-weight: bold; color: {profit_color};">{holding['profit']}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 if selection == "🤖 로보 어드바이저 (Demo)":
     page_robo_advisor()
