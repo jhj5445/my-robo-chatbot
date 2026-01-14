@@ -2115,11 +2115,12 @@ elif selection == "🔎 ETF 구성 종목 검색":
 # 🤖 로보 어드바이저 (Demo) - React Port
 # -----------------------------------------------------------------------------
 def page_robo_advisor():
-    import textwrap  # Import locally to ensure availability for dedent
+    # HTML 공백 제거 헬퍼 함수 (모든 들여쓰기 제거하여 Markdown 코드블록 인식 방지)
+    def clean_html(html_str):
+        return "\n".join([line.strip() for line in html_str.splitlines() if line.strip()])
 
-    # 모바일 레이아웃을 위한 CSS (폰트, 너비 제한 등)
-    # textwrap.dedent handles the indentation cleanup
-    st.markdown(textwrap.dedent("""
+    # 모바일 레이아웃을 위한 CSS
+    st.markdown(clean_html("""
         <style>
         /* 모바일 화면 시뮬레이션 컨테이너 */
         .mobile-container {
@@ -2256,8 +2257,8 @@ def page_robo_advisor():
             profile = portfolio_profiles[selected_profile]
             is_my_profile = (selected_profile == '성장형')
             
-            # Use textwrap.dedent to strip indentation
-            profile_html = textwrap.dedent(f"""
+            # HTML flattened with clean_html
+            profile_html = clean_html(f"""
             <div style="background-color: {profile['color']}; padding: 24px; border-radius: 20px; color: white; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; overflow: hidden;">
                 <div style="position: absolute; right: -16px; top: -16px; background-color: rgba(255,255,255,0.1); width: 96px; height: 96px; border-radius: 50%; filter: blur(24px);"></div>
                 <div style="position: relative; z-index: 10;">
@@ -2282,7 +2283,7 @@ def page_robo_advisor():
             for item in profile['items']:
                 # Card Style Container
                 with st.container():
-                    st.markdown(textwrap.dedent(f"""
+                    st.markdown(clean_html(f"""
                     <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="flex: 1; padding-right: 16px;">
                             <div style="display: flex; gap: 4px; margin-bottom: 4px;">
@@ -2308,7 +2309,7 @@ def page_robo_advisor():
             is_rebalancing = st.toggle("리밸런싱 진행중 (Demo)", value=True)
             
             # Account Header
-            st.markdown(textwrap.dedent("""
+            st.markdown(clean_html("""
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -2321,7 +2322,7 @@ def page_robo_advisor():
             """), unsafe_allow_html=True)
             
             # Dark Card (Performance) with Gradient
-            st.markdown(textwrap.dedent("""
+            st.markdown(clean_html("""
             <div style="background: linear-gradient(135deg, #111827, #1F2937); color: white; padding: 20px; border-radius: 20px; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
                 <div style="position: absolute; right: -20px; top: -20px; background-color: rgba(255,255,255,0.05); width: 128px; height: 128px; border-radius: 50%; filter: blur(30px);"></div>
                 <div style="position: relative; z-index: 10;">
@@ -2362,7 +2363,7 @@ def page_robo_advisor():
             
             if is_rebalancing:
                 # Rebalancing Status Card
-                st.markdown(textwrap.dedent("""
+                st.markdown(clean_html("""
                 <div style="background-color: #2563EB; border-radius: 16px; padding: 16px; color: white; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
                     <div style="display: flex; items-center; gap: 8px; margin-bottom: 8px;">
                         <!-- Spinner Icon simulation -->
@@ -2382,7 +2383,7 @@ def page_robo_advisor():
                 </div>
                 """), unsafe_allow_html=True)
 
-                st.markdown(textwrap.dedent("""
+                st.markdown(clean_html("""
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #111827;">실시간 변경 현황</h3>
                     <span style="background-color: #F3F4F6; color: #6B7280; font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: bold;">Live</span>
@@ -2400,7 +2401,7 @@ def page_robo_advisor():
                 
                 for cat in sorted_cats:
                     # Category Header
-                    st.markdown(textwrap.dedent(f"""
+                    st.markdown(clean_html(f"""
                     <div style="background-color: #F9FAFB; padding: 10px 16px; border-top-left-radius: 12px; border-top-right-radius: 12px; border: 1px solid #F3F4F6; border-bottom: none; margin-top: 12px;">
                         <span style="font-size: 12px; font-weight: bold; color: #374151;">{cat}</span>
                     </div>
@@ -2422,7 +2423,7 @@ def page_robo_advisor():
                         
                         diff_color = "#DC2626" if item['diff'].startswith('+') else "#2563EB"
                         
-                        st.markdown(textwrap.dedent(f"""
+                        st.markdown(clean_html(f"""
                         <div style="background-color: white; padding: 16px; border: 1px solid #F3F4F6; {border_style} touch-action: manipulation;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
                                 <div>
@@ -2461,7 +2462,7 @@ def page_robo_advisor():
                 st.subheader("현재 보유 자산")
                 for holding in current_holdings:
                     profit_color = "#DC2626" if holding['profit'].startswith('+') else ("#2563EB" if holding['profit'].startswith('-') else "#6B7280")
-                    st.markdown(textwrap.dedent(f"""
+                    st.markdown(clean_html(f"""
                     <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold; color: #1F2937;">{holding['name']}</h4>
