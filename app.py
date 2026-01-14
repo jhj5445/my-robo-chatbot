@@ -1771,6 +1771,8 @@ elif selection == "🔎 ETF 구성 종목 검색":
         total = len(tickers)
         
         
+        last_error = None
+        
         for i, ticker in enumerate(tickers):
             pdf = None
             try:
@@ -1780,20 +1782,33 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 except:
                     pdf = None
 
-                # 2. 실패 시 Naver Finance 편법 크롤링 (html5lib 필요)
+                # 2. 실패 시 Naver Finance 편법 크롤링 (html5lib/lxml 필요)
                 if pdf is None or pdf.empty:
                     try:
                         url = f"https://finance.naver.com/item/sise_pdf.naver?code={ticker}"
-                        # verify=False with warnings suppressed (already patched at top)
-                        dfs = pd.read_html(url, encoding='euc-kr') 
+                        # 반드시 requests를 사용해 verify=False 적용 (pd.read_html은 내부적으로 urllib 사용시 SSL 검증 할 수 있음)
+                        resp = requests.get(url, verify=False, timeout=5)
+                        
+                        # 인코딩 설정 (네이버는 EUC-KR)
+                        dfs = pd.read_html(resp.text) 
+                        
                         if dfs:
                             pdf = dfs[0]
-                            # 컬럼 표준화 (종목명, 비중% 등을 pykrx 포맷과 비슷하게 맞춤)
-                            # Naver: [종목명, 계약수, 금액, 비중(%)] 등인 경우가 많음
-                            if '구성종목(비중)' in pdf.columns: # 헤더가 좀 다를 수 있음
-                                pass 
-                            # 보통 컬럼이: ['구성종목(구성자산)', '주식/원화', '금액', '비중(%)'] 등
+                            # 컬럼 보정 (Naver Data Cleaning)
+                            # 보통 컬럼: [구성종목(구성자산), 수량, 금액, 비중(%), 평가손익, 현재가, 등락, 전일비]
+                            # pykrx 포맷과 호환되게 Rename 필요할 수 있음.
+                            rename_map = {
+                                '구성종목(구성자산)': 'Name',
+                                '구성종목': 'Name',
+                                '비중(%)': '비중',
+                                '평가금액': '금액',
+                                '금액': '금액'
+                            }
+                            pdf = pdf.rename(columns=rename_map)
+                            
                     except Exception as e_nav:
+                        if last_error is None:
+                            last_error = str(e_nav)
                         pass
                 
                 # 데이터 유효성 검사
@@ -1813,6 +1828,12 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 my_bar.progress((i + 1) / total, text=f"{progress_text} ({i+1}/{total})")
                 
         my_bar.empty()
+        
+        # Debug Info: 첫번째 에러 보여주기 (사용자 피드백용)
+        if last_error and not etf_data:
+             with st.expander("⚠️ 데이터 수집 에러 상세 (Debug Logs)"):
+                st.write(f"Last Error: {last_error}")
+
         
         if error_count > 0:
             st.warning(f"{error_count}개의 ETF 데이터를 가져오는 데 실패했습니다 (상장폐지 등 이유).")
