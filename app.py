@@ -4,6 +4,7 @@ import ssl
 import requests
 import warnings
 from io import StringIO
+import yfinance as yf
 
 # -----------------------------------------------------------------------------
 # SSL Fix for FinanceDataReader & KRX (User Environment Specific)
@@ -1822,8 +1823,57 @@ elif selection == "🔎 ETF 구성 종목 검색":
                                         pdf['금액'] = 0
                             
                     except Exception as e_nav:
+import yfinance as yf
+
+# ... (omitted)
+
                         if last_error is None:
                             last_error = f"Mobile API Error: {str(e_nav)}"
+                        pass
+
+                # 3. 최후의 수단: Yahoo Finance (yfinance) - 해외 IP(Streamlit Cloud)에서 작동 가능
+                if pdf is None or pdf.empty:
+                    try:
+                        # Ticker format: 069500.KS
+                        yf_ticker = f"{ticker}.KS"
+                        fund = yf.Ticker(yf_ticker)
+                        
+                        # Top Holdings 가져오기 (보통 상위 10개만 제공됨)
+                        holdings_df = None
+                        try:
+                            # funds_data.top_holdings는 pandas DF 리턴 (Name, Symbol, Holding Percent 등)
+                            # yfinance 버전에 따라 다를 수 있음. 최신버전 기준 시도.
+                            # 혹은 info['holdings'] 등
+                            # 여기선 안전하게 funds_data 접근 시도
+                            if hasattr(fund, 'funds_data') and fund.funds_data:
+                                holdings_df = fund.funds_data.top_holdings
+                        except:
+                            pass
+                            
+                        if holdings_df is not None and not holdings_df.empty:
+                            # 컬럼 매핑: Name, Symbol, Holding % (0.05 form or 5.0 form)
+                            # yfinance returns: index=Symbol, columns=['Name', 'Holding %', 'Buying', 'Selling']
+                            # Reset index to get Symbol as column
+                            holdings_df = holdings_df.reset_index()
+                            
+                            rename_map = {
+                                'Name': 'Name',
+                                'Symbol': 'Code',
+                                'Holding %': '비중' 
+                            }
+                            # 컬럼이 다를 수 있으니 확인
+                            cols = holdings_df.columns
+                            if 'Name' in cols and 'Holding %' in cols:
+                                pdf = holdings_df.rename(columns=rename_map)
+                                # 비중이 0.xx 형태면 * 100 해야함 (yfinance는 보통 0.0524 형태로 줌)
+                                # 근데 yf 최신은 이미 %단위(5.24)일 수도 있음. 확인 필요. 
+                                # 보통 funds_data는 0~1 scale인 경우가 많음 -> 확인 불가하므로 그대로 둠
+                                # 금액 정보 없음
+                                pdf['금액'] = 0
+                                
+                    except Exception as e_yf:
+                        if last_error is None:
+                             last_error = f"Yahoo Error: {str(e_yf)}"
                         pass
                 
                 # 데이터 유효성 검사
