@@ -2115,8 +2115,11 @@ elif selection == "🔎 ETF 구성 종목 검색":
 # 🤖 로보 어드바이저 (Demo) - React Port
 # -----------------------------------------------------------------------------
 def page_robo_advisor():
+    import textwrap  # Import locally to ensure availability for dedent
+
     # 모바일 레이아웃을 위한 CSS (폰트, 너비 제한 등)
-    st.markdown("""
+    # textwrap.dedent handles the indentation cleanup
+    st.markdown(textwrap.dedent("""
         <style>
         /* 모바일 화면 시뮬레이션 컨테이너 */
         .mobile-container {
@@ -2143,7 +2146,7 @@ def page_robo_advisor():
             margin-bottom: 12px;
         }
         </style>
-    """, unsafe_allow_html=True)
+    """), unsafe_allow_html=True)
 
     # -----------------------------
     # 1. Mock Data Definition
@@ -2253,24 +2256,24 @@ def page_robo_advisor():
             profile = portfolio_profiles[selected_profile]
             is_my_profile = (selected_profile == '성장형')
             
-            # HTML String Construction (Indentation Removed to prevent code block rendering)
-            profile_html = f"""
-<div style="background-color: {profile['color']}; padding: 24px; border-radius: 20px; color: white; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; overflow: hidden;">
-    <div style="position: absolute; right: -16px; top: -16px; background-color: rgba(255,255,255,0.1); width: 96px; height: 96px; border-radius: 50%; filter: blur(24px);"></div>
-    <div style="position: relative; z-index: 10;">
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="background-color: rgba(255,255,255,0.2); backdrop-filter: blur(4px); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; display: inline-flex; align-items: center;">
-                    🎯 위험등급 {profile['riskLevel']}등급
-                </span>
+            # Use textwrap.dedent to strip indentation
+            profile_html = textwrap.dedent(f"""
+            <div style="background-color: {profile['color']}; padding: 24px; border-radius: 20px; color: white; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); position: relative; overflow: hidden;">
+                <div style="position: absolute; right: -16px; top: -16px; background-color: rgba(255,255,255,0.1); width: 96px; height: 96px; border-radius: 50%; filter: blur(24px);"></div>
+                <div style="position: relative; z-index: 10;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span style="background-color: rgba(255,255,255,0.2); backdrop-filter: blur(4px); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; display: inline-flex; align-items: center;">
+                                🎯 위험등급 {profile['riskLevel']}등급
+                            </span>
+                        </div>
+                        {'<span style="background-color: white; color: #DC2626; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">나의 투자성향</span>' if is_my_profile else ''}
+                    </div>
+                    <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 800; color:white;">{selected_profile} 전략</h3>
+                    <p style="margin: 0; font-size: 13px; opacity: 0.9; color: rgba(255,255,255,0.9); line-height: 1.5;">{profile['desc']}</p>
+                </div>
             </div>
-            {'<span style="background-color: white; color: #DC2626; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">나의 투자성향</span>' if is_my_profile else ''}
-        </div>
-        <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 800; color:white;">{selected_profile} 전략</h3>
-        <p style="margin: 0; font-size: 13px; opacity: 0.9; color: rgba(255,255,255,0.9); line-height: 1.5;">{profile['desc']}</p>
-    </div>
-</div>
-"""
+            """)
             st.markdown(profile_html, unsafe_allow_html=True)
 
             # B. Items List
@@ -2279,7 +2282,7 @@ def page_robo_advisor():
             for item in profile['items']:
                 # Card Style Container
                 with st.container():
-                    st.markdown(f"""
+                    st.markdown(textwrap.dedent(f"""
                     <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="flex: 1; padding-right: 16px;">
                             <div style="display: flex; gap: 4px; margin-bottom: 4px;">
@@ -2295,7 +2298,7 @@ def page_robo_advisor():
                             <span style="font-size: 9px; color: #9CA3AF;">비중</span>
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """), unsafe_allow_html=True)
             
             st.button(f"{selected_profile}으로 변경 예약하기", use_container_width=True, type="primary")
             st.caption("* 변경 예약 시 다음 리밸런싱 주기에 반영됩니다.", help="매월 말일 기준")
@@ -2305,7 +2308,7 @@ def page_robo_advisor():
             is_rebalancing = st.toggle("리밸런싱 진행중 (Demo)", value=True)
             
             # Account Header
-            st.markdown("""
+            st.markdown(textwrap.dedent("""
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -2315,10 +2318,10 @@ def page_robo_advisor():
                     <h2 style="margin: 0; font-size: 18px; font-weight: 800; color: #111827;">Global Quants EMP</h2>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """), unsafe_allow_html=True)
             
             # Dark Card (Performance) with Gradient
-            st.markdown("""
+            st.markdown(textwrap.dedent("""
             <div style="background: linear-gradient(135deg, #111827, #1F2937); color: white; padding: 20px; border-radius: 20px; margin-bottom: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
                 <div style="position: absolute; right: -20px; top: -20px; background-color: rgba(255,255,255,0.05); width: 128px; height: 128px; border-radius: 50%; filter: blur(30px);"></div>
                 <div style="position: relative; z-index: 10;">
@@ -2355,11 +2358,11 @@ def page_robo_advisor():
                     </div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """), unsafe_allow_html=True)
             
             if is_rebalancing:
                 # Rebalancing Status Card
-                st.markdown("""
+                st.markdown(textwrap.dedent("""
                 <div style="background-color: #2563EB; border-radius: 16px; padding: 16px; color: white; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
                     <div style="display: flex; items-center; gap: 8px; margin-bottom: 8px;">
                         <!-- Spinner Icon simulation -->
@@ -2377,14 +2380,14 @@ def page_robo_advisor():
                         <span>매수 중 (65%)</span>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
+                """), unsafe_allow_html=True)
 
-                st.markdown("""
+                st.markdown(textwrap.dedent("""
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #111827;">실시간 변경 현황</h3>
                     <span style="background-color: #F3F4F6; color: #6B7280; font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: bold;">Live</span>
                 </div>
-                """, unsafe_allow_html=True)
+                """), unsafe_allow_html=True)
                 
                 # Group by category logic
                 cats = {}
@@ -2397,11 +2400,11 @@ def page_robo_advisor():
                 
                 for cat in sorted_cats:
                     # Category Header
-                    st.markdown(f"""
+                    st.markdown(textwrap.dedent(f"""
                     <div style="background-color: #F9FAFB; padding: 10px 16px; border-top-left-radius: 12px; border-top-right-radius: 12px; border: 1px solid #F3F4F6; border-bottom: none; margin-top: 12px;">
                         <span style="font-size: 12px; font-weight: bold; color: #374151;">{cat}</span>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """), unsafe_allow_html=True)
                     
                     # Items
                     for idx, item in enumerate(cats[cat]):
@@ -2419,7 +2422,7 @@ def page_robo_advisor():
                         
                         diff_color = "#DC2626" if item['diff'].startswith('+') else "#2563EB"
                         
-                        st.markdown(f"""
+                        st.markdown(textwrap.dedent(f"""
                         <div style="background-color: white; padding: 16px; border: 1px solid #F3F4F6; {border_style} touch-action: manipulation;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
                                 <div>
@@ -2452,13 +2455,13 @@ def page_robo_advisor():
                                 </div>
                             </div>
                         </div>
-                        """, unsafe_allow_html=True)
+                        """), unsafe_allow_html=True)
 
             else:
                 st.subheader("현재 보유 자산")
                 for holding in current_holdings:
                     profit_color = "#DC2626" if holding['profit'].startswith('+') else ("#2563EB" if holding['profit'].startswith('-') else "#6B7280")
-                    st.markdown(f"""
+                    st.markdown(textwrap.dedent(f"""
                     <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold; color: #1F2937;">{holding['name']}</h4>
@@ -2471,7 +2474,7 @@ def page_robo_advisor():
                             <span style="font-size: 14px; font-weight: bold; color: {profit_color};">{holding['profit']}</span>
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """), unsafe_allow_html=True)
 
 if selection == "🤖 로보 어드바이저 (Demo)":
     page_robo_advisor()
