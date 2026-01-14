@@ -2456,7 +2456,7 @@ def page_robo_advisor():
                             </div>
                         </div>
                         """), unsafe_allow_html=True)
-
+            
             else:
                 st.subheader("현재 보유 자산")
                 for holding in current_holdings:
