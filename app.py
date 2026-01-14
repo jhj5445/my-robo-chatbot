@@ -1823,11 +1823,9 @@ elif selection == "🔎 ETF 구성 종목 검색":
                                         pdf['금액'] = 0
                             
                     except Exception as e_nav:
-import yfinance as yf
-
-# ... (omitted)
-
                         if last_error is None:
+                            last_error = f"Mobile API Error: {str(e_nav)}"
+                        pass
                             last_error = f"Mobile API Error: {str(e_nav)}"
                         pass
 
