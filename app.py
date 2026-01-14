@@ -1783,61 +1783,41 @@ elif selection == "🔎 ETF 구성 종목 검색":
                 except:
                     pdf = None
 
-                # 2. 실패 시 Naver Finance 편법 크롤링 (html5lib/lxml 필요)
+                # 2. 실패 시 Naver Mobile API 사용 (JSON)
                 if pdf is None or pdf.empty:
                     try:
-                        # URL: .naver or .nhn (Try .naver first, but some environments behave differently)
-                        # Referer is important for Naver
-                        url = f"https://finance.naver.com/item/sise_pdf.naver?code={ticker}"
+                        # Mobile API가 훨씬 안정적이고 차단이 덜함
+                        url = f"https://m.stock.naver.com/api/item/getEtfHoldings.nhn?code={ticker}"
                         
                         headers = {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            'Referer': f'https://finance.naver.com/item/main.naver?code={ticker}'
+                            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+                            'Referer': f'https://m.stock.naver.com/item/main.nhn?code={ticker}'
                         }
                         
                         resp = requests.get(url, headers=headers, verify=False, timeout=5)
                         
-                        if resp.status_code != 200:
-                            # 404면 .nhn으로 재시도 (Legacy support or blocked redirection)
-                            url_legacy = f"https://finance.naver.com/item/sise_pdf.nhn?code={ticker}"
-                            resp = requests.get(url_legacy, headers=headers, verify=False, timeout=5)
-                            if resp.status_code != 200:
-                                raise Exception(f"HTTP {resp.status_code} at {url}")
-
-                        # 인코딩 설정
-                        text = resp.text
-                        
-                        # 디버깅: '구성종목' 등 핵심 키워드 유무 확인
-                        if '구성종목' not in text and 'sise_pdf' not in text:
-                             # pass but keep going to read_html
-                             pass
-
-                        dfs = pd.read_html(StringIO(text), flavor='bs4') 
-                        
-                        if dfs:
-                            pdf = dfs[0]
-                            # 컬럼 보정
-
-                            rename_map = {
-                                '구성종목(구성자산)': 'Name',
-                                '구성종목': 'Name',
-                                '비중(%)': '비중',
-                                '평가금액': '금액',
-                                '금액': '금액'
-                            }
-                            pdf = pdf.rename(columns=rename_map)
-                        else:
-                            raise Exception("No tables found in HTML")
+                        if resp.status_code == 200:
+                            data_json = resp.json()
+                            if "result" in data_json and "etfHoldings" in data_json["result"]:
+                                holdings = data_json["result"]["etfHoldings"]
+                                # JSON -> DataFrame 변환
+                                # Fields: nm(이름), cd(코드), pct(비중)
+                                temp_df = pd.DataFrame(holdings)
+                                if not temp_df.empty:
+                                    # 컬럼 이름 매핑
+                                    rename_map = {
+                                        'nm': 'Name',
+                                        'pct': '비중',
+                                        'cd': 'Code' # 코드는 추가정보로 활용
+                                    }
+                                    pdf = temp_df.rename(columns=rename_map)
+                                    # 금액 정보가 없을 수 있음 (비중 위주)
+                                    if '금액' not in pdf.columns:
+                                        pdf['금액'] = 0
                             
                     except Exception as e_nav:
                         if last_error is None:
-                            # 첫 번째 에러 상세 기록
-                            debug_snippet = ""
-                            try:
-                                if 'resp' in locals():
-                                    debug_snippet = resp.text[:200]
-                            except: pass
-                            last_error = f"{str(e_nav)} | Snippet: {debug_snippet}"
+                            last_error = f"Mobile API Error: {str(e_nav)}"
                         pass
                 
                 # 데이터 유효성 검사
