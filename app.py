@@ -164,8 +164,43 @@ def calculate_feature_set(df, feature_level):
             df['DayOfWeek'] = df.index.dayofweek
             feature_cols.append('DayOfWeek')
             
-    feature_cols = list(set(feature_cols)) # Ensure unique (though list logic above makes unique mostly)
+    feature_cols = list(set(feature_cols)) # Ensure unique
     return df, feature_cols
+
+# -----------------------------------------------------------------------------
+# Portfolio & Universe Helpers (Moved to Top for Scope Safety)
+# -----------------------------------------------------------------------------
+PORTFOLIO_HISTORY_FILE = "ai_portfolio_history.json"
+
+def load_portfolio_history():
+    if os.path.exists(PORTFOLIO_HISTORY_FILE):
+        try:
+            with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_portfolio_history(history_data):
+    try:
+        with open(PORTFOLIO_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history_data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Error saving portfolio history: {e}")
+
+# NASDAQ 100 Full List (Static)
+NASDAQ_100_FULL = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ADBE", "COST",
+    "PEP", "CSCO", "NFLX", "AMD", "TMUS", "INTC", "TXN", "QCOM", "AMGN", "HON",
+    "AMAT", "INTU", "SBUX", "ADP", "BKNG", "GILD", "ISRG", "MDLZ", "REGN", "VRTX",
+    "LRCX", "ADI", "PANW", "MU", "SNPS", "CDNS", "CHTR", "KLAC", "CSX", "MAR",
+    "CRWD", "MELI", "NXPI", "ORLY", "CTAS", "MNST", "ROP", "LULU", "ODFL", "PCAR",
+    "PAYX", "FTNT", "KDP", "EXC", "XEL", "IDXX", "BIIB", "AEP", "MCHP", "ALGN",
+    "DLTR", "EA", "AZN", "WBD", "FAST", "CTSH", "BKR", "GFS", "VRSK", "KHC",
+    "GEHC", "TEAM", "SGEN", "ZS", "DDOG", "FANG", "ON", "ANSS", "CDW", "TTD",
+    "WBA", "ILMN", "SIRI", "ZM", "ENPH", "JD", "PDD", "BIDU", "NTES", "CEG",
+    "FISV", "ATVI", "MRVL", "MRNA", "DXCM", "LCID", "RIVN", "WDAY", "EBAY", "SPLK"
+]
 import lightgbm as lgb
 import numpy as np
 import numpy as np
@@ -2467,39 +2502,7 @@ elif selection == "🔎 ETF 구성 종목 검색":
 # -----------------------------------------------------------------------------
 # 1. Helper Functions
 # -----------------------------------------------------------------------------
-PORTFOLIO_HISTORY_FILE = "ai_portfolio_history.json"
-
-def load_portfolio_history():
-    if os.path.exists(PORTFOLIO_HISTORY_FILE):
-        try:
-            with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-# NASDAQ 100 Full List (Static) - Since standard library fetching of specific index is hard
-NASDAQ_100_FULL = [
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ADBE", "COST",
-    "PEP", "CSCO", "NFLX", "AMD", "TMUS", "INTC", "TXN", "QCOM", "AMGN", "HON",
-    "AMAT", "INTU", "SBUX", "ADP", "BKNG", "GILD", "ISRG", "MDLZ", "REGN", "VRTX",
-    "LRCX", "ADI", "PANW", "MU", "SNPS", "CDNS", "CHTR", "KLAC", "CSX", "MAR",
-    "CRWD", "MELI", "NXPI", "ORLY", "CTAS", "MNST", "ROP", "LULU", "ODFL", "PCAR",
-    "PAYX", "FTNT", "KDP", "EXC", "XEL", "IDXX", "BIIB", "AEP", "MCHP", "ALGN",
-    "DLTR", "EA", "AZN", "WBD", "FAST", "CTSH", "BKR", "GFS", "VRSK", "KHC",
-    "GEHC", "TEAM", "SGEN", "ZS", "DDOG", "FANG", "ON", "ANSS", "CDW", "TTD",
-    "WBA", "ILMN", "SIRI", "ZM", "ENPH", "JD", "PDD", "BIDU", "NTES", "CEG",
-    "FISV", "ATVI", "MRVL", "MRNA", "DXCM", "LCID", "RIVN", "WDAY", "EBAY", "SPLK"
-]
-
-# Model Persistence directory
-# Helper functions moved to top
-def save_portfolio_history(history_data):
-    try:
-        with open(PORTFOLIO_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history_data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print(f"Error saving portfolio history: {e}")
+# History functions moved to top
 
 # -----------------------------------------------------------------------------
 # 🤖 로보 어드바이저 (Demo) - React Port
