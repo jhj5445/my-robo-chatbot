@@ -1428,15 +1428,22 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # [Download Button for Git Persistence]
             saved_path = os.path.join(MODEL_SAVE_DIR, f"{file_name_ver}.pkl")
+            
+            st.divider() # Visual separation
+            
             if os.path.exists(saved_path):
+                # st.success(f"모델 저장 성공: {saved_path}") # Debug feedback
                 with open(saved_path, "rb") as f:
                     btn = st.download_button(
-                        label=f"📥 모델 파일 다운로드 (.pkl) - {file_name_ver}",
+                        label=f"📥 모델 파일 다운로드 (.pkl)\n({file_name_ver})",
                         data=f,
                         file_name=f"{file_name_ver}.pkl",
                         mime="application/octet-stream",
-                        help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다."
+                        help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다.",
+                        use_container_width=True # Make it prominent
                     )
+            else:
+                st.error(f"저장된 파일을 찾을 수 없습니다: {saved_path}")
         except Exception as e:
             st.error(f"모델 저장 실패: {e}")
 
