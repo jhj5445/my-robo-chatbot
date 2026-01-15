@@ -1462,193 +1462,173 @@ elif selection == "🤖 AI 모델 테스팅":
             status_text.empty()
 
             
-        # Feature Importance (for Single Models only)
-        if isinstance(model, dict):
-            pass # Ensemble은 feature importance 복잡하므로 생략하거나 Linear 것만 보여줌
-        elif "Linear" in model_type or "LightGBM" in model_type:
-            st.subheader(f"🔍 모델 중요 Feature (Top 20 / {len(feature_cols)})")
-            if "Linear" in model_type:
-                importance = np.abs(model.coef_)
-            else:
-                importance = model.feature_importances_
-            
-            imp_df = pd.DataFrame({"Feature": feature_cols, "Importance": importance}).sort_values(by="Importance", ascending=False)
-            st.bar_chart(imp_df.head(20).set_index("Feature"))
-
-    # F. 오늘의 추천 PICK (별도 섹션)
-    st.divider()
+    # Feature Importance (Check session_state if not local)
+    # Fast Inference logic stores data in session_state, so we should look there if local vars missing
+    current_model_info = st.session_state.trained_models.get(model_type)
     
-    if not st.session_state.trained_models:
-        st.subheader("🔮 오늘의 추천 PICK")
-        st.info("👆 위에서 먼저 AI 모델을 학습시켜주세요.")
-    else:
-        # 학습된 모델 선택
-        model_options = list(st.session_state.trained_models.keys())
-        selected_model_name = st.selectbox("추천을 확인할 학습 모델 선택", model_options)
+    # -----------------------------------------------------------------------------
+    # 3. ANALYSIS & RESULTS TABS (UI Refactor)
+    # -----------------------------------------------------------------------------
+    if current_model_info:
+        st.divider()
+        st.subheader(f"📊 {model_type} AI 모델 분석 결과")
         
-        # 저장된 모델 정보 로드
-        saved_info = st.session_state.trained_models[selected_model_name]
-        saved_top_k = saved_info.get("top_k", 3)
-        saved_horizon = saved_info.get("horizon", "1 Day") # Load legacy models as 1 Day
+        tab_analysis, tab_recommend, tab_history = st.tabs(["🔍 모델 분석 (Feature)", "📈 추천 포트폴리오 (Today)", "📜 포트폴리오 히스토리"])
         
-        st.subheader(f"🔮 오늘의 추천 PICK ({saved_horizon} 보유 전략, Top {saved_top_k})")
-        
-        # --- [Persistence Load] ---
-        portfolio_history = load_portfolio_history()
-        # Key: Model Name (단순화: 모델별로 하나의 포트폴리오만 저장한다고 가정)
-        last_portfolio = portfolio_history.get(selected_model_name, None)
-        
-        if last_portfolio:
-            with st.expander(f"📅 지난 저장 포트폴리오 ({last_portfolio['date']})", expanded=False):
-                st.write(f"**보유 종목:** {', '.join(last_portfolio['items'])}")
-                st.caption("새로운 추천 결과와 비교하여 리밸런싱 가이드를 제공합니다.")
-
-        # 캐시 키 생성 (날짜 + 모델명 + TopK + Horizon)
-        today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
-        cache_key = f"{selected_model_name}_{today_str}_{saved_top_k}_{saved_horizon}"
-        
-        # 이미 분석한 결과가 있는지 확인
-        if cache_key in st.session_state.gemini_insights:
-            st.success(f"⚡ 분석 결과 (Date: {today_str})")
-            cached_data = st.session_state.gemini_insights[cache_key]
+        # [Tab 1: Feature Analysis]
+        with tab_analysis:
+            model_obj = current_model_info['model']
+            f_cols = current_model_info['feature_cols']
             
-            # 카드 표시
-            st.write(f"**추천 종목 ({len(cached_data['top_k_items'])}개)**")
-            
-            cols = st.columns(min(len(cached_data['top_k_items']), 4))
-            for i, item in enumerate(cached_data['top_k_items']):
-                col_idx = i % 4
-                with cols[col_idx]:
-                    st.info(f"**{i+1}위: {item['Ticker']}**\n\nAI Score: {item['Score']:.4f}")
-            
-            st.markdown(cached_data['insight'])
-            
-            # --- [Persistence Save Button] ---
-            if st.button("💾 이 포트폴리오 저장하기 (현재 운용 설정)"):
-                new_items = [item['Ticker'] for item in cached_data['top_k_items']]
-                portfolio_history[selected_model_name] = {
-                    "date": today_str,
-                    "items": new_items,
-                    "horizon": saved_horizon
-                }
-                save_portfolio_history(portfolio_history)
-                st.success("포트폴리오가 저장되었습니다! 다음 분석 시 리밸런싱 기준으로 사용됩니다.")
-                st.rerun()
-            
-        else:
-            if st.button("🚀 추천 종목 분석 실행 (Gemini)"):
-                with st.spinner(f"최신 데이터 분석 중... (Top {saved_top_k})"):
-                    model = saved_info['model']
-                    scaler = saved_info['scaler']
-                    feature_cols = saved_info['feature_cols']
-                    full_data = saved_info['full_data']
-                    valid_tickers = saved_info['valid_tickers']
-                    
-                    today_scores = []
-                    
-                    # 앙상블 예측 함수 (local)
-                    def predict_ensemble_local(models, X):
-                        p1 = models["Linear"].predict(X)
-                        p2 = models["LightGBM"].predict(X)
-                        p3 = models["SVM"].predict(X)
-                        return (p1 + p2 + p3) / 3
-                    
-                    for ticker in valid_tickers:
-                        try:
-                            df = full_data[ticker]
-                            last_row = df.iloc[[-1]] 
-                            last_date = last_row.index[0].strftime('%Y-%m-%d')
-                            
-                            feats = last_row[feature_cols].values
-                            feats_scaled = scaler.transform(feats)
-                            
-                            if isinstance(model, dict):
-                                score = predict_ensemble_local(model, feats_scaled)[0]
-                            else:
-                                score = model.predict(feats_scaled)[0]
-                            
-                            # 대표 Feature 값 추출 (설명을 위해 일부만)
-                            # 간단히 첫 5개나 주요 feature 이름 매칭해서 보낼 수 있음
-                            feat_dict = {}
-                            # Common features across levels
-                            if "RSI_14" in last_row.columns: feat_dict["RSI_14"] = f"{last_row['RSI_14'].values[0]:.2f}"
-                            elif "RSI" in last_row.columns: feat_dict["RSI"] = f"{last_row['RSI'].values[0]:.2f}" # For Light mode
-                            
-                            if "ROC_20" in last_row.columns: feat_dict["ROC_20 (Momentum)"] = f"{last_row['ROC_20'].values[0]:.2%}"
-                            elif "Momentum_1M" in last_row.columns: feat_dict["Momentum_1M"] = f"{last_row['Momentum_1M'].values[0]:.2%}" # For Light mode
-                            
-                            if "MA_Dist_20" in last_row.columns: feat_dict["MA_Dist_20"] = f"{last_row['MA_Dist_20'].values[0]:.4f}"
-                            elif "Disparity_20" in last_row.columns: feat_dict["Disparity_20"] = f"{last_row['Disparity_20'].values[0]:.4f}" # For Light mode
-                            
-                            if "Vol_20" in last_row.columns: feat_dict["Vol_20"] = f"{last_row['Vol_20'].values[0]:.4f}"
-                            elif "Volatility" in last_row.columns: feat_dict["Volatility"] = f"{last_row['Volatility'].values[0]:.4f}" # For Light mode
-                            
-                            if not feat_dict: # Rich 모드 등으로 이름이 다를 경우 대비 안전장치
-                                feat_dict = {"Score": f"{score:.4f}"}
-
-                            today_scores.append({
-                                "Ticker": ticker,
-                                "Score": score,
-                                "Date": last_date,
-                                "Features": feat_dict
-                            })
-                        except Exception as e:
-                            # st.warning(f"Error processing {ticker} for daily pick: {e}")
-                            pass
-                    
-                    # Top K 선정
-                    today_scores.sort(key=lambda x: x['Score'], reverse=True)
-                    top_k_items = today_scores[:saved_top_k]
-                    
-                    if top_k_items:
-                        # Gemini 프롬프트 구성
-                        prompt_context = f"Model Type: {selected_model_name}\nHorizon: {saved_horizon} Hold\nTarget Strategy: Buy Top {saved_top_k} scores.\n\n"
-                        
-                        # A. New Portfolio Info
-                        prompt_context += f"## New Recommended Portfolio (Top {saved_top_k}):\n"
-                        for i, item in enumerate(top_k_items):
-                            prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.5f})\n   - Indicators: {item['Features']}\n"
-                        
-                        # B. Previous Portfolio Info (Rebalancing Logic)
-                        if last_portfolio:
-                            prompt_context += f"\n## Previous Portfolio (Adopted on {last_portfolio['date']}):\n"
-                            prompt_context += f"Items: {', '.join(last_portfolio['items'])}\n"
-                            prompt_context += "\n[Rebalancing Task]\nCompare the 'New' list with the 'Previous' list. Tell the user exactly what to SELL, BUY, and HOLD/ADJUST.\n"
-                        else:
-                            prompt_context += "\n[Initial Portfolio Task]\nThis is a new portfolio construction.\n"
-
-                        # C. Instructions
-                        prompt_context += """
-                        \nAct as a Chief Investment Officer (CIO). Write a comprehensive report in Korean.
-                        
-                        ### Report Structure:
-                        1. **Market Context & Rationale**: Briefly explain why the model selected these stocks based on the indicators (Momentum, Volatility, etc) and the Horizon.
-                        2. **Portfolio Construction Proposal** (Table):
-                           - Suggest specific **Target Weights (%)** for each new stock. 
-                           - Weighting logic: Give higher weights to higher AI Scores or lower volatility stocks. Total must be 100%.
-                        3. **Rebalancing Guide** (Actionable Steps):
-                           - If Previous Portfolio exists:
-                             - 🔴 **SELL**: List stocks to sell completely (in Previous but not in New).
-                             - 🟢 **BUY**: List stocks to buy (in New).
-                             - 🟡 **ADJUST**: List stocks to keep but adjust weights.
-                           - If no Previous Portfolio: Mention "Fresh Entry".
-                        """
-                        
-                        try:
-                            # API Key Rotation 적용
-                            insight_text = generate_content_with_rotation(prompt_context, model_name="gemini-3-flash-preview")
-                            
-                            # 결과 캐싱
-                            st.session_state.gemini_insights[cache_key] = {
-                                "top_k_items": top_k_items,
-                                "insight": insight_text
-                            }
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"Gemini 분석 중 오류: {e}")
+            if isinstance(model_obj, dict):
+                 st.info("앙상블 모델은 개별 모델의 조합으로 이루어져 있어 단일 Feature Importance를 제공하지 않습니다.")
+            elif "Linear" in model_type or "LightGBM" in model_type:
+                st.write(f"**Top 20 Important Features** (Total: {len(f_cols)})")
+                try:
+                    if "Linear" in model_type:
+                        importance = np.abs(model_obj.coef_)
                     else:
-                        st.warning("데이터 부족으로 예측할 수 없습니다.")
+                        importance = model_obj.feature_importances_
+                    
+                    imp_df = pd.DataFrame({"Feature": f_cols, "Importance": importance}).sort_values(by="Importance", ascending=False)
+                    st.bar_chart(imp_df.head(20).set_index("Feature"))
+                except Exception as e:
+                    st.warning(f"Feature Importance 표시 중 오류: {e}")
+            else:
+                st.info("선택된 모델은 Feature Importance를 지원하지 않습니다.")
+
+        # [Tab 2: Recommendations]
+        with tab_recommend:
+            st.caption(f"AI 모델({model_type})이 예측한 상승 확률/수익률 상위 종목입니다.")
+            
+            saved_top_k = current_model_info.get("top_k", 3)
+            saved_horizon = current_model_info.get("horizon", "1 Day")
+
+            # --- [Persistence Load] ---
+            portfolio_history = load_portfolio_history()
+            last_portfolio = portfolio_history.get(model_type, None)
+            
+            if last_portfolio:
+                with st.expander(f"📅 지난 저장 포트폴리오 (비교군) - {last_portfolio['date']}", expanded=False):
+                    st.write(f"**Items:** {', '.join(last_portfolio['items'])}")
+                    st.caption("새로운 추천 결과와 비교하여 리밸런싱 가이드를 제공합니다.")
+
+            # Cache Key
+            today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
+            cache_key = f"{model_type}_{today_str}_{saved_top_k}_{saved_horizon}"
+            
+            if cache_key in st.session_state.gemini_insights:
+                st.success(f"⚡ 분석 결과 (Date: {today_str})")
+                cached_data = st.session_state.gemini_insights[cache_key]
+                
+                st.write(f"**추천 종목 ({len(cached_data['top_k_items'])}개)**")
+                cols = st.columns(min(len(cached_data['top_k_items']), 4))
+                for i, item in enumerate(cached_data['top_k_items']):
+                    with cols[i % 4]:
+                        st.info(f"**{i+1}위: {item['Ticker']}**\n\nScore: {item['Score']:.4f}")
+                
+                st.markdown(cached_data['insight'])
+                
+                if st.button("💾 이 포트폴리오 저장하기 (현재 운용 설정)"):
+                    new_items = [item['Ticker'] for item in cached_data['top_k_items']]
+                    portfolio_history[model_type] = {
+                        "date": today_str,
+                        "items": new_items,
+                        "horizon": saved_horizon
+                    }
+                    save_portfolio_history(portfolio_history)
+                    st.toast("✅ 포트폴리오 저장 완료!")
+                    time.sleep(1)
+                    st.rerun()
+            else:
+                if st.button("🚀 추천 종목 분석 실행 (Gemini)"):
+                    with st.spinner(f"최신 데이터 분석 중... (Top {saved_top_k})"):
+                        model = current_model_info['model']
+                        scaler = current_model_info['scaler']
+                        feature_cols = current_model_info['feature_cols']
+                        full_data = current_model_info['full_data']
+                        valid_tickers = current_model_info['valid_tickers']
+                        
+                        today_scores = []
+                        
+                        def predict_ensemble_local(models, X):
+                            p1 = models["Linear"].predict(X)
+                            p2 = models["LightGBM"].predict(X)
+                            p3 = models["SVM"].predict(X)
+                            return (p1 + p2 + p3) / 3
+                        
+                        for ticker in valid_tickers:
+                            try:
+                                df = full_data[ticker]
+                                last_row = df.iloc[[-1]] 
+                                last_date = last_row.index[0].strftime('%Y-%m-%d')
+                                
+                                feats = last_row[feature_cols].values
+                                feats_scaled = scaler.transform(feats)
+                                
+                                if isinstance(model, dict):
+                                    score = predict_ensemble_local(model, feats_scaled)[0]
+                                else:
+                                    score = model.predict(feats_scaled)[0]
+                                
+                                feat_dict = {}
+                                # Feature Extraction for Prompt
+                                check_list = ["RSI_14", "RSI", "ROC_20", "Momentum_1M", "MA_Dist_20", "Disparity_20", "Vol_20", "Volatility"]
+                                for c in check_list:
+                                    if c in last_row.columns:
+                                        feat_dict[c] = f"{last_row[c].values[0]:.2f}"
+
+                                if not feat_dict: feat_dict = {"Score": f"{score:.4f}"}
+
+                                today_scores.append({
+                                    "Ticker": ticker, "Score": score, "Date": last_date, "Features": feat_dict
+                                })
+                            except: pass
+                        
+                        today_scores.sort(key=lambda x: x['Score'], reverse=True)
+                        top_k_items = today_scores[:saved_top_k]
+                        
+                        if top_k_items:
+                            # Gemini Prompt
+                            prompt_context = f"Model: {model_type}\nHorizon: {saved_horizon}\nStrategy: Buy Top {saved_top_k}\n\n"
+                            prompt_context += "## New Portfolio:\n"
+                            for i, item in enumerate(top_k_items):
+                                prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.5f}) - {item['Features']}\n"
+                            
+                            if last_portfolio:
+                                prompt_context += f"\n## Previous Portfolio ({last_portfolio['date']}):\nItems: {', '.join(last_portfolio['items'])}\n"
+                                prompt_context += "\n[Task] Compare New vs Previous. Suggest SELL/BUY/ADJUST actions.\n"
+                            else:
+                                prompt_context += "\n[Task] Initial Portfolio Construction.\n"
+
+                            prompt_context += "\nAct as CIO. Write report in Korean.\n1. Market Context\n2. Portfolio Weights (%)\n3. Rebalancing Guide (SELL/BUY/ADJUST)"
+                            
+                            try:
+                                insight_text = generate_content_with_rotation(prompt_context, model_name="gemini-3-flash-preview")
+                                st.session_state.gemini_insights[cache_key] = {
+                                    "top_k_items": top_k_items,
+                                    "insight": insight_text
+                                }
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gemini Error: {e}")
+                        else:
+                            st.warning("예측 가능한 종목이 없습니다.")
+
+        # [Tab 3: History]
+        with tab_history:
+            st.subheader("📜 포트폴리오 관리 이력")
+            hist_data = load_portfolio_history()
+            if hist_data:
+                # Pretty print or table
+                for m_name, info in hist_data.items():
+                    with st.expander(f"{m_name} ({info['date']})", expanded=True):
+                        st.write(f"**Items:** {', '.join(info['items'])}")
+                        st.caption(f"Horizon: {info['horizon']}")
+            else:
+                st.info("아직 저장된 포트폴리오가 없습니다.")
+
+
 
 elif selection == "⚖️ 포트폴리오 최적화":
     st.title("⚖️ 포트폴리오 최적화 (Portfolio Optimizer)")
