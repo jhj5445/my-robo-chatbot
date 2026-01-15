@@ -46,6 +46,7 @@ import plotly.express as px
 import pandas as pd
 import pickle # Added for Persistence
 import datetime
+import json
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
