@@ -802,7 +802,7 @@ elif selection == "🤖 AI 모델 테스팅":
         with col1:
             universe_preset = st.selectbox(
                 "분석 대상 유니버스", 
-                ["직접 입력", "NASDAQ Top 10 (Demo)", "Tech Giants (M7)", "NASDAQ Top 30 (Big Tech)", "S&P 500 Top 50 (Sector Leaders)"]
+                ["직접 입력", "NASDAQ Top 10 (Demo)", "Tech Giants (M7)", "NASDAQ Top 30 (Big Tech)", "S&P 500 Top 50 (Sector Leaders)", "NASDAQ 100 + S&P 500 (Market Proxy)"]
             )
             
             if universe_preset == "직접 입력":
@@ -833,11 +833,44 @@ elif selection == "🤖 AI 모델 테스팅":
                     "WFC", "TXN", "NEE", "PM", "VZ", "RTX", "INTC", "QCOM", "UPS", "HON"
                 ]
 
+            elif universe_preset == "NASDAQ 100 + S&P 500 (Market Proxy)":
+                # Proxy for full market: NASDAQ 100 constituents (approx) + Key S&P 500
+                # 실시간으로 수천 개를 다 받으면 너무 느리므로, 대표 우량주 ~100개로 구성된 Proxy 사용
+                # 사용자가 요청한 '전체' 느낌을 내기 위해 섹터별 대표주를 최대한 많이 포함
+                tickers = [
+                    # Tech
+                    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ADBE", "CRM", "AMD", "INTC", "QCOM", "TXN", "IBM", "ORCL", "CSCO", "MU", "LRCX", "AMAT",
+                    # Finance
+                    "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "PYPL", "BRK-B", "SPGI",
+                    # Health
+                    "LLY", "UNH", "JNJ", "MRK", "ABBV", "PFE", "TMO", "ABT", "DHR", "BMY", "AMGN", "GILD", "ISRG", "VRTX", "REGN",
+                    # Consumer
+                    "AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "WMT", "COST", "PG", "KO", "PEP", "PM", "MO", "CL", "EL",
+                    # Industrial / Energy / etc
+                    "XOM", "CVX", "COP", "SLB", "EOG", "CAT", "DE", "HON", "GE", "LMT", "RTX", "BA", "UPS", "FDX", "UNP", "NEE", "DUK", "SO",
+                    # + NASDAQ 100 extras
+                    "NFLX", "CMCSA", "TMUS", "CHTR", "BKNG", "ADP", "MDLZ", "CSX", "MAR", "CTAS", "KLAC", "SNPS", "CDNS", "PANW", "FTNT",
+                    "MELI", "NXPI", "ORLY", "ROP", "ODFL", "PCAR", "MNST", "KDP", "EXC", "XEL", "IDXX", "BIIB", "MCHP", "ALGN", "DLTR"
+                ]
+                # 중복 제거 및 정렬
+                tickers = sorted(list(set(tickers)))
+                st.caption(f"ℹ️ 속도 최적화를 위해 주요 {len(tickers)}개 우량주로 유니버스를 구성했습니다.")
+
             if universe_preset != "직접 입력":
                 st.info(f"선택된 유니버스: {len(tickers)}개 종목")
 
         with col2:
-            model_type = st.selectbox("사용할 AI 모델", ["Linear Regression (선형회귀)", "LightGBM (트리 부스팅)", "SVM (Support Vector Machine)"])
+            model_type = st.selectbox(
+                "사용할 AI 모델", 
+                ["⭐ 앙상블 (Ensemble: Linear+SVM+LGBM)", "Linear Regression (선형회귀)", "LightGBM (트리 부스팅)", "SVM (Support Vector Machine)"]
+            )
+            
+            # Prediction Horizon ( 보유 기간 )
+            horizon_option = st.radio(
+                "예측 기간 (보유 기간)",
+                ["1 Day (단기 트레이딩)", "2 Weeks (스윙 트레이딩)"],
+                index=1
+            )
             
             # Feature 복잡도 선택
             feature_level = st.radio(
@@ -847,7 +880,7 @@ elif selection == "🤖 AI 모델 테스팅":
             )
             
             # Top-K 선택
-            top_k_select = st.number_input("일일 매수 종목 수 (Top K)", min_value=1, max_value=10, value=3)
+            top_k_select = st.number_input("추천할 종목 수 (Top K)", min_value=1, max_value=20, value=10)
     
         col_d1, col_d2 = st.columns(2)
         with col_d1:
@@ -979,8 +1012,15 @@ elif selection == "🤖 AI 모델 테스팅":
                         df['DayOfWeek'] = df.index.dayofweek
                         feature_cols.append('DayOfWeek')
 
-                # Label (Target): 다음날 수익률
-                df['Next_Return'] = df['Close'].pct_change().shift(-1)
+                # Label (Target): 다음날 수익률 or 2주 후 수익률
+                if "2 Weeks" in horizon_option:
+                    # 10거래일 후의 수익률 (2주)
+                    # Future Return = (Price[t+10] - Price[t]) / Price[t]
+                    # shift(-10)
+                    df['Next_Return'] = df['Close'].pct_change(10).shift(-10)
+                else:
+                    # 1일 후 (단기)
+                    df['Next_Return'] = df['Close'].pct_change().shift(-1)
                 
                 df.dropna(inplace=True)
                 
@@ -1077,26 +1117,25 @@ elif selection == "🤖 AI 모델 테스팅":
                 continue
                 
             # Benchmark
-            avg_daily_ret = np.mean(daily_returns)
-            benchmark_capital *= (1 + avg_daily_ret)
+            # Score 기준 정렬
+            candidates.sort(key=lambda x: x['score'], reverse=True)
             
-            # Strategy: User Selected Top-K
-            daily_scores.sort(key=lambda x: x[1], reverse=True) 
+            # Top-K
+            picks = candidates[:top_k_select]
             
-            # 입력된 k보다 유효 종목이 적으면 가능한 만큼만 매수
-            actual_k = min(top_k_select, len(daily_scores))
-            selected = daily_scores[:actual_k]
+            # 수익률 계산 (Equal Weight)
+            period_ret = sum([p['ret'] for p in picks]) / len(picks) if picks else 0.0
             
-            if selected:
-                strategy_daily_ret = np.mean([x[2] for x in selected])
-            else:
-                strategy_daily_ret = 0.0
-                
-            strategy_capital *= (1 + strategy_daily_ret)
+            # Benchmark (전체 평균)
+            bench_ret = sum([p['ret'] for p in candidates]) / len(candidates) if candidates else 0.0
             
-            portfolio_curve.append(strategy_capital)
-            benchmark_curve.append(benchmark_capital)
-            dates.append(date)
+            # 누적
+            cum_ret_model *= (1 + period_ret)
+            cum_ret_bench *= (1 + bench_ret)
+            
+            plot_dates.append(next_date)
+            plot_model.append(cum_ret_model)
+            plot_bench.append(cum_ret_bench)
             
         progress_bar.progress(1.0)
         status_text.empty()
@@ -1108,35 +1147,40 @@ elif selection == "🤖 AI 모델 테스팅":
             "feature_cols": feature_cols,
             "full_data": full_data,
             "valid_tickers": valid_tickers,
-            "top_k": top_k_select,   # 저장: 학습할 때 쓴 Top-K
-            "feature_level": feature_level # 저장: 학습할 때 쓴 레벨
+            "top_k": top_k_select,
+            "feature_level": feature_level,
+            "horizon": horizon_option # 저장
         }
         
         # E. 결과 시각화
         results_df = pd.DataFrame({
-            "Date": dates,
-            "AI Model Portfolio": portfolio_curve,
-            "Benchmark (Equal Weight)": benchmark_curve
+            "Date": plot_dates,
+            "AI Model Portfolio": plot_model,
+            "Benchmark (Equal Weight)": plot_bench
         }).set_index("Date")
         
-        st.success(f"학습 완료! ({model_type}) - Features: {len(feature_cols)}개, Top-{top_k_select}")
+        st.success(f"학습 완료! ({model_type}) - Horizon: {horizon_option}, Top-{top_k_select}")
         
-        total_ret = results_df['AI Model Portfolio'].iloc[-1] - 1
-        bench_ret = results_df['Benchmark (Equal Weight)'].iloc[-1] - 1
-        alpha = total_ret - bench_ret
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("AI 포트폴리오 수익률", f"{total_ret:.2%}", delta=f"{alpha:.2%}")
-        c2.metric("벤치마크 수익률", f"{bench_ret:.2%}")
-        mdd_series = results_df['AI Model Portfolio'] / results_df['AI Model Portfolio'].cummax() - 1
-        mdd = mdd_series.min()
-        c3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
-        
-        st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
-        fig = px.line(results_df, title=f"{model_type} 기반 Top-{top_k_select} 전략 성과")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        if "Linear" in model_type or "LightGBM" in model_type:
+        if not results_df.empty:
+            total_ret = results_df['AI Model Portfolio'].iloc[-1] - 1
+            bench_ret = results_df['Benchmark (Equal Weight)'].iloc[-1] - 1
+            alpha = total_ret - bench_ret
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("AI 포트폴리오 수익률", f"{total_ret:.2%}", delta=f"{alpha:.2%}")
+            c2.metric("벤치마크 수익률", f"{bench_ret:.2%}")
+            mdd_series = results_df['AI Model Portfolio'] / results_df['AI Model Portfolio'].cummax() - 1
+            mdd = mdd_series.min()
+            c3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
+            
+            st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
+            fig = px.line(results_df, title=f"{model_type} 기반 Top-{top_k_select} 전략 성과")
+            st.plotly_chart(fig, use_container_width=True)
+            
+        # Feature Importance (for Single Models only)
+        if isinstance(model, dict):
+            pass # Ensemble은 feature importance 복잡하므로 생략하거나 Linear 것만 보여줌
+        elif "Linear" in model_type or "LightGBM" in model_type:
             st.subheader(f"🔍 모델 중요 Feature (Top 20 / {len(feature_cols)})")
             if "Linear" in model_type:
                 importance = np.abs(model.coef_)
@@ -1160,28 +1204,51 @@ elif selection == "🤖 AI 모델 테스팅":
         # 저장된 모델 정보 로드
         saved_info = st.session_state.trained_models[selected_model_name]
         saved_top_k = saved_info.get("top_k", 3)
+        saved_horizon = saved_info.get("horizon", "1 Day") # Load legacy models as 1 Day
         
-        st.subheader(f"🔮 오늘의 추천 PICK (Daily Top {saved_top_k})")
+        st.subheader(f"🔮 오늘의 추천 PICK ({saved_horizon} 보유 전략, Top {saved_top_k})")
+        
+        # --- [Persistence Load] ---
+        portfolio_history = load_portfolio_history()
+        # Key: Model Name (단순화: 모델별로 하나의 포트폴리오만 저장한다고 가정)
+        last_portfolio = portfolio_history.get(selected_model_name, None)
+        
+        if last_portfolio:
+            with st.expander(f"📅 지난 저장 포트폴리오 ({last_portfolio['date']})", expanded=False):
+                st.write(f"**보유 종목:** {', '.join(last_portfolio['items'])}")
+                st.caption("새로운 추천 결과와 비교하여 리밸런싱 가이드를 제공합니다.")
 
-        # 캐시 키 생성 (날짜 + 모델명 + TopK)
+        # 캐시 키 생성 (날짜 + 모델명 + TopK + Horizon)
         today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
-        cache_key = f"{selected_model_name}_{today_str}_{saved_top_k}"
+        cache_key = f"{selected_model_name}_{today_str}_{saved_top_k}_{saved_horizon}"
         
         # 이미 분석한 결과가 있는지 확인
         if cache_key in st.session_state.gemini_insights:
-            st.success(f"⚡ 저장된 분석 결과 (Date: {today_str})")
+            st.success(f"⚡ 분석 결과 (Date: {today_str})")
             cached_data = st.session_state.gemini_insights[cache_key]
             
-            # 카드 표시 (Top K 개수만큼 컬럼 동적 생성 - 너무 많으면 3개씩)
+            # 카드 표시
             st.write(f"**추천 종목 ({len(cached_data['top_k_items'])}개)**")
             
-            cols = st.columns(min(len(cached_data['top_k_items']), 4)) # 최대 4열
+            cols = st.columns(min(len(cached_data['top_k_items']), 4))
             for i, item in enumerate(cached_data['top_k_items']):
                 col_idx = i % 4
                 with cols[col_idx]:
                     st.info(f"**{i+1}위: {item['Ticker']}**\n\nAI Score: {item['Score']:.4f}")
             
             st.markdown(cached_data['insight'])
+            
+            # --- [Persistence Save Button] ---
+            if st.button("💾 이 포트폴리오 저장하기 (현재 운용 설정)"):
+                new_items = [item['Ticker'] for item in cached_data['top_k_items']]
+                portfolio_history[selected_model_name] = {
+                    "date": today_str,
+                    "items": new_items,
+                    "horizon": saved_horizon
+                }
+                save_portfolio_history(portfolio_history)
+                st.success("포트폴리오가 저장되었습니다! 다음 분석 시 리밸런싱 기준으로 사용됩니다.")
+                st.rerun()
             
         else:
             if st.button("🚀 추천 종목 분석 실행 (Gemini)"):
@@ -1194,6 +1261,13 @@ elif selection == "🤖 AI 모델 테스팅":
                     
                     today_scores = []
                     
+                    # 앙상블 예측 함수 (local)
+                    def predict_ensemble_local(models, X):
+                        p1 = models["Linear"].predict(X)
+                        p2 = models["LightGBM"].predict(X)
+                        p3 = models["SVM"].predict(X)
+                        return (p1 + p2 + p3) / 3
+                    
                     for ticker in valid_tickers:
                         try:
                             df = full_data[ticker]
@@ -1202,7 +1276,11 @@ elif selection == "🤖 AI 모델 테스팅":
                             
                             feats = last_row[feature_cols].values
                             feats_scaled = scaler.transform(feats)
-                            score = model.predict(feats_scaled)[0]
+                            
+                            if isinstance(model, dict):
+                                score = predict_ensemble_local(model, feats_scaled)[0]
+                            else:
+                                score = model.predict(feats_scaled)[0]
                             
                             # 대표 Feature 값 추출 (설명을 위해 일부만)
                             # 간단히 첫 5개나 주요 feature 이름 매칭해서 보낼 수 있음
@@ -1238,11 +1316,38 @@ elif selection == "🤖 AI 모델 테스팅":
                     top_k_items = today_scores[:saved_top_k]
                     
                     if top_k_items:
-                        # Gemini 프롬프트
-                        prompt_context = f"Model Type: {selected_model_name}\nTarget Strategy: Buy Top {saved_top_k} scores daily.\n\nTop {saved_top_k} Recommended Stocks:\n"
+                        # Gemini 프롬프트 구성
+                        prompt_context = f"Model Type: {selected_model_name}\nHorizon: {saved_horizon} Hold\nTarget Strategy: Buy Top {saved_top_k} scores.\n\n"
+                        
+                        # A. New Portfolio Info
+                        prompt_context += f"## New Recommended Portfolio (Top {saved_top_k}):\n"
                         for i, item in enumerate(top_k_items):
-                            prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.4f})\n   - Indicators: {item['Features']}\n"
-                        prompt_context += "\nAct as a Quantitative Analyst. Explain WHY the model likely selected these stocks based on the provided indicators. Focus on the quantitative rationale. Write in Korean."
+                            prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.5f})\n   - Indicators: {item['Features']}\n"
+                        
+                        # B. Previous Portfolio Info (Rebalancing Logic)
+                        if last_portfolio:
+                            prompt_context += f"\n## Previous Portfolio (Adopted on {last_portfolio['date']}):\n"
+                            prompt_context += f"Items: {', '.join(last_portfolio['items'])}\n"
+                            prompt_context += "\n[Rebalancing Task]\nCompare the 'New' list with the 'Previous' list. Tell the user exactly what to SELL, BUY, and HOLD/ADJUST.\n"
+                        else:
+                            prompt_context += "\n[Initial Portfolio Task]\nThis is a new portfolio construction.\n"
+
+                        # C. Instructions
+                        prompt_context += """
+                        \nAct as a Chief Investment Officer (CIO). Write a comprehensive report in Korean.
+                        
+                        ### Report Structure:
+                        1. **Market Context & Rationale**: Briefly explain why the model selected these stocks based on the indicators (Momentum, Volatility, etc) and the Horizon.
+                        2. **Portfolio Construction Proposal** (Table):
+                           - Suggest specific **Target Weights (%)** for each new stock. 
+                           - Weighting logic: Give higher weights to higher AI Scores or lower volatility stocks. Total must be 100%.
+                        3. **Rebalancing Guide** (Actionable Steps):
+                           - If Previous Portfolio exists:
+                             - 🔴 **SELL**: List stocks to sell completely (in Previous but not in New).
+                             - 🟢 **BUY**: List stocks to buy (in New).
+                             - 🟡 **ADJUST**: List stocks to keep but adjust weights.
+                           - If no Previous Portfolio: Mention "Fresh Entry".
+                        """
                         
                         try:
                             # API Key Rotation 적용
@@ -2107,9 +2212,28 @@ elif selection == "🔎 ETF 구성 종목 검색":
             )
             fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
             st.plotly_chart(fig, use_container_width=True)
-            
-        else:
             st.warning("해당 종목을 포함하는 ETF가 없습니다.")
+
+# -----------------------------------------------------------------------------
+# 1. Helper Functions
+# -----------------------------------------------------------------------------
+PORTFOLIO_HISTORY_FILE = "ai_portfolio_history.json"
+
+def load_portfolio_history():
+    if os.path.exists(PORTFOLIO_HISTORY_FILE):
+        try:
+            with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_portfolio_history(history_data):
+    try:
+        with open(PORTFOLIO_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history_data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Error saving portfolio history: {e}")
 
 # -----------------------------------------------------------------------------
 # 🤖 로보 어드바이저 (Demo) - React Port
