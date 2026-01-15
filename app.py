@@ -1423,6 +1423,18 @@ elif selection == "🤖 AI 모델 테스팅":
                 
                 save_model_checkpoint(file_name_ver, model_data_to_save)
                 st.toast(f"✅ 모델 자동 저장 완료: {file_name_ver}")
+                
+                # [Download Button for Git Persistence]
+                saved_path = os.path.join(MODEL_SAVE_DIR, f"{file_name_ver}.pkl")
+                if os.path.exists(saved_path):
+                    with open(saved_path, "rb") as f:
+                        btn = st.download_button(
+                            label=f"📥 모델 파일 다운로드 (.pkl) - {file_name_ver}",
+                            data=f,
+                            file_name=f"{file_name_ver}.pkl",
+                            mime="application/octet-stream",
+                            help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다."
+                        )
             except Exception as e:
                 st.error(f"모델 저장 실패: {e}")
 
@@ -1606,8 +1618,43 @@ elif selection == "🤖 AI 모델 테스팅":
                         model = current_model_info['model']
                         scaler = current_model_info['scaler']
                         feature_cols = current_model_info['feature_cols']
-                        full_data = current_model_info['full_data']
-                        valid_tickers = current_model_info['valid_tickers']
+                        valid_tickers = current_model_info.get('valid_tickers', [])
+                        
+                        # [Fix] Handle missing 'full_data' (from loaded models)
+                        if 'full_data' in current_model_info:
+                             full_data = current_model_info['full_data']
+                        else:
+                             # Auto-download for scoring (Fast Mode)
+                             st.warning("⚠️ 학습 데이터가 메모리에 없어 최신 데이터를 다운로드합니다...")
+                             full_data = {}
+                             end_dt = pd.to_datetime("today")
+                             start_dt = end_dt - pd.Timedelta(days=365)
+                             
+                             progress_bar = st.progress(0)
+                             for i, ticker in enumerate(valid_tickers):
+                                 try:
+                                     df = yf.download(ticker, start=start_dt, end=end_dt, progress=False)
+                                     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+                                     if 'Adj Close' not in df.columns:
+                                          if 'Close' in df.columns: df['Adj Close'] = df['Close']
+                                          else: continue
+                                     
+                                     df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
+                                     df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                                     
+                                     # Feature Engineering (Reuse helper)
+                                     df, _ = calculate_feature_set(df, current_model_info.get('feature_level', 'Standard'))
+                                     df.dropna(inplace=True)
+                                     
+                                     if not df.empty:
+                                          full_data[ticker] = df
+                                 except:
+                                     pass
+                                 progress_bar.progress((i + 1) / len(valid_tickers))
+                             progress_bar.empty()
+                             
+                             # Cache it back to save redownload in same session
+                             st.session_state.trained_models[model_type]['full_data'] = full_data
                         
                         today_scores = []
                         
@@ -1738,6 +1785,19 @@ elif selection == "🤖 AI 모델 테스팅":
         with tab_history:
             st.subheader("📜 포트폴리오 관리 이력")
             hist_data = load_portfolio_history()
+            
+            # [Download Button for Git Persistence]
+            if os.path.exists(PORTFOLIO_HISTORY_FILE):
+                with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
+                    json_bytes = f.read().encode("utf-8")
+                st.download_button(
+                    label="📥 전체 포트폴리오 히스토리 다운로드 (.json)",
+                    data=json_bytes,
+                    file_name="ai_portfolio_history.json",
+                    mime="application/json",
+                    help="GitHub에 커밋하여 이력을 보존하세요."
+                )
+                
             if hist_data:
                 # Pretty print or table
                 for m_name, info in hist_data.items():
