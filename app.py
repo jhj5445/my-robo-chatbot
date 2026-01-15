@@ -50,6 +50,122 @@ from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
+
+# -----------------------------------------------------------------------------
+# Helper Functions (Moved to Top for Scope Safety)
+# -----------------------------------------------------------------------------
+import pickle
+
+MODEL_SAVE_DIR = "saved_models"
+if not os.path.exists(MODEL_SAVE_DIR):
+    os.makedirs(MODEL_SAVE_DIR)
+
+def save_model_checkpoint(model_name, data):
+    try:
+        filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
+        with open(filepath, "wb") as f:
+            pickle.dump(data, f)
+        return True
+    except Exception as e:
+        print(f"Error saving model: {e}")
+        return False
+
+def load_model_checkpoint(model_name):
+    try:
+        filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                return pickle.load(f)
+    except Exception as e:
+        print(f"Error loading model: {e}")
+    return None
+
+def calculate_feature_set(df, feature_level):
+    df = df.copy()
+    feature_cols = []
+    
+    # 1. Light (Basic 5)
+    if "Light" in feature_level:
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['Disparity_5'] = df['Close'] / df['MA5']
+        df['Disparity_20'] = df['Close'] / df['MA20']
+        
+        # RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        df['Volatility'] = df['Close'].pct_change().rolling(20).std()
+        df['Momentum_1M'] = df['Close'].pct_change(20)
+        
+        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
+    else:
+        # Standard(22) or Rich(50+)
+        if "Rich" in feature_level:
+            windows = [3, 5, 10, 20, 40, 60, 120]
+        else:
+            windows = [5, 10, 20, 60]
+
+        df['Ret_1d'] = df['Close'].pct_change()
+        
+        for w in windows:
+            col_roc = f'ROC_{w}'
+            df[col_roc] = df['Close'].pct_change(w)
+            feature_cols.append(col_roc)
+            
+            col_ma = f'MA_Dist_{w}'
+            ma = df['Close'].rolling(window=w).mean()
+            df[col_ma] = df['Close'] / ma
+            feature_cols.append(col_ma)
+            
+            col_vol = f'Vol_{w}'
+            df[col_vol] = df['Ret_1d'].rolling(window=w).std()
+            feature_cols.append(col_vol)
+            
+            col_vol_ratio = f'Vol_Ratio_{w}'
+            vol_ma = df['Volume'].rolling(window=w).mean()
+            df[col_vol_ratio] = df['Volume'] / vol_ma
+            feature_cols.append(col_vol_ratio)
+        
+        # RSI
+        rsi_windows = [9, 14, 28, 60] if "Rich" in feature_level else [14, 60]
+        for rsi_w in rsi_windows:
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(rsi_w).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(rsi_w).mean()
+            rs = gain / loss
+            col_rsi = f'RSI_{rsi_w}'
+            df[col_rsi] = 100 - (100 / (1 + rs))
+            feature_cols.append(col_rsi)
+
+        # [Rich Only Features]
+        if "Rich" in feature_level:
+            # Lagged Returns
+            for lag in [1, 2, 3, 5]:
+                col_lag = f'Ret_Lag_{lag}'
+                df[col_lag] = df['Ret_1d'].shift(lag)
+                feature_cols.append(col_lag)
+            
+            # Candle Patterns
+            df['Candle_Body'] = (df['Close'] - df['Open']).abs()
+            df['Candle_Len'] = (df['High'] - df['Low'])
+            df['Body_Ratio'] = df['Candle_Body'] / df['Candle_Len'].replace(0, 1)
+            feature_cols.append('Body_Ratio')
+            
+            df['Shadow_Upper'] = (df['High'] - df[['Open', 'Close']].max(axis=1)) / df['Candle_Len'].replace(0, 1)
+            df['Shadow_Lower'] = (df[['Open', 'Close']].min(axis=1) - df['Low']) / df['Candle_Len'].replace(0, 1)
+            feature_cols.append('Shadow_Upper')
+            feature_cols.append('Shadow_Lower')
+            
+            # Day of Week
+            df['DayOfWeek'] = df.index.dayofweek
+            feature_cols.append('DayOfWeek')
+            
+    feature_cols = list(set(feature_cols)) # Ensure unique (though list logic above makes unique mostly)
+    return df, feature_cols
 import lightgbm as lgb
 import numpy as np
 import numpy as np
@@ -2377,124 +2493,8 @@ NASDAQ_100_FULL = [
 ]
 
 # Model Persistence directory
-MODEL_SAVE_DIR = "saved_models"
-if not os.path.exists(MODEL_SAVE_DIR):
-    os.makedirs(MODEL_SAVE_DIR)
-
-def save_model_checkpoint(model_name, data):
-    """
-    model_name: str (e.g., 'Ensemble', 'Linear')
-    data: dict containing model, scaler, feature_cols, etc.
-    """
-    try:
-        filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
-        with open(filepath, "wb") as f:
-            pickle.dump(data, f)
-        return True
-    except Exception as e:
-        print(f"Error saving model: {e}")
-        return False
-
-def load_model_checkpoint(model_name):
-    try:
-        filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
-        if os.path.exists(filepath):
-            with open(filepath, "rb") as f:
-                return pickle.load(f)
-    except Exception as e:
-        print(f"Error loading model: {e}")
-    return None
-
-def calculate_feature_set(df, feature_level):
-    """
-    Centralized Feature Engineering Logic
-    Returns: (df with features, list of feature column names)
-    """
-    df = df.copy()
-    feature_cols = []
-    
-    # 1. Light (Basic 5)
-    if "Light" in feature_level:
-        df['MA5'] = df['Close'].rolling(window=5).mean()
-        df['MA20'] = df['Close'].rolling(window=20).mean()
-        df['Disparity_5'] = df['Close'] / df['MA5']
-        df['Disparity_20'] = df['Close'] / df['MA20']
-        
-        # RSI
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
-        
-        df['Volatility'] = df['Close'].pct_change().rolling(20).std()
-        df['Momentum_1M'] = df['Close'].pct_change(20)
-        
-        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
-
-    else:
-        # Standard(22) or Rich(50+)
-        if "Rich" in feature_level:
-            windows = [3, 5, 10, 20, 40, 60, 120]
-        else:
-            windows = [5, 10, 20, 60]
-
-        df['Ret_1d'] = df['Close'].pct_change()
-        
-        for w in windows:
-            col_roc = f'ROC_{w}'
-            df[col_roc] = df['Close'].pct_change(w)
-            feature_cols.append(col_roc)
-            
-            col_ma = f'MA_Dist_{w}'
-            ma = df['Close'].rolling(window=w).mean()
-            df[col_ma] = df['Close'] / ma
-            feature_cols.append(col_ma)
-            
-            col_vol = f'Vol_{w}'
-            df[col_vol] = df['Ret_1d'].rolling(window=w).std()
-            feature_cols.append(col_vol)
-            
-            col_vol_ratio = f'Vol_Ratio_{w}'
-            vol_ma = df['Volume'].rolling(window=w).mean()
-            df[col_vol_ratio] = df['Volume'] / vol_ma
-            feature_cols.append(col_vol_ratio)
-        
-        # RSI
-        rsi_windows = [9, 14, 28, 60] if "Rich" in feature_level else [14, 60]
-        for rsi_w in rsi_windows:
-            delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(rsi_w).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(rsi_w).mean()
-            rs = gain / loss
-            col_rsi = f'RSI_{rsi_w}'
-            df[col_rsi] = 100 - (100 / (1 + rs))
-            feature_cols.append(col_rsi)
-
-        # [Rich Only Features]
-        if "Rich" in feature_level:
-            # Lagged Returns
-            for lag in [1, 2, 3, 5]:
-                col_lag = f'Ret_Lag_{lag}'
-                df[col_lag] = df['Ret_1d'].shift(lag)
-                feature_cols.append(col_lag)
-            
-            # Candle Patterns
-            df['Candle_Body'] = (df['Close'] - df['Open']).abs()
-            df['Candle_Len'] = (df['High'] - df['Low'])
-            df['Body_Ratio'] = df['Candle_Body'] / df['Candle_Len'].replace(0, 1)
-            feature_cols.append('Body_Ratio')
-            
-            df['Shadow_Upper'] = (df['High'] - df[['Open', 'Close']].max(axis=1)) / df['Candle_Len'].replace(0, 1)
-            df['Shadow_Lower'] = (df[['Open', 'Close']].min(axis=1) - df['Low']) / df['Candle_Len'].replace(0, 1)
-            feature_cols.append('Shadow_Upper')
-            feature_cols.append('Shadow_Lower')
-            
-            # Day of Week
-            df['DayOfWeek'] = df.index.dayofweek
-            feature_cols.append('DayOfWeek')
-            
-    return df, feature_cols
+# Helper functions moved to top
+def save_portfolio_history(history_data):
 
 def save_portfolio_history(history_data):
     try:
