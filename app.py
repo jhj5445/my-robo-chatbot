@@ -1730,17 +1730,28 @@ elif selection == "🤖 AI 모델 테스팅":
                 col_save, col_report = st.columns([1, 1])
                 with col_save:
                     if st.button("💾 포트폴리오 저장 (확정)"):
-                        new_items = [item['Ticker'] for item in top_k_items]
-                        portfolio_history[model_type] = {
-                            "date": today_str,
-                            "items": new_items,
-                            "horizon": saved_horizon,
-                            "weights": {x['Ticker']: x['Weight'] for x in top_k_items}
-                        }
-                        save_portfolio_history(portfolio_history)
-                        st.toast("✅ 저장되었습니다!", icon="💾")
-                        time.sleep(1)
-                        st.rerun()
+                        try:
+                            new_items = [item['Ticker'] for item in top_k_items]
+                            
+                            # Ensure we have the latest history loaded
+                            if 'portfolio_history' not in st.session_state:
+                                st.session_state.portfolio_history = load_portfolio_history()
+                            
+                            # Update Dict
+                            st.session_state.portfolio_history[model_type] = {
+                                "date": today_str,
+                                "items": new_items,
+                                "horizon": saved_horizon,
+                                "weights": {x['Ticker']: x['Weight'] for x in top_k_items}
+                            }
+                            
+                            # Save to File
+                            save_portfolio_history(st.session_state.portfolio_history)
+                            
+                            st.success(f"✅ 저장 완료! '포트폴리오 히스토리' 탭에서 확인하세요. (Total: {len(st.session_state.portfolio_history)} records)")
+                            # st.rerun() # Remove rerun to let user see success message
+                        except Exception as e:
+                            st.error(f"저장 실패: {e}")
 
                 # ---------------------------------------------------------
                 # 3. Optional AI Analysis (Gemini)
