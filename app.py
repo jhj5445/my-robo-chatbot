@@ -1300,9 +1300,13 @@ elif selection == "🤖 AI 모델 테스팅":
             picks = candidates[:top_k_select]
             
             # 수익률 계산 (Equal Weight)
-            period_ret = sum([p['ret'] for p in picks]) / len(picks) if picks else 0.0
+            raw_period_ret = sum([p['ret'] for p in picks]) / len(picks) if picks else 0.0
             
-            # Benchmark (전체 평균)
+            # [Transaction Cost] 0.1% (0.001) per rebalance
+            cost = 0.001
+            period_ret = raw_period_ret - cost
+            
+            # Benchmark (Equal Weight of Universe)
             bench_ret = sum([p['ret'] for p in candidates]) / len(candidates) if candidates else 0.0
             
             # 누적
@@ -1329,35 +1333,66 @@ elif selection == "🤖 AI 모델 테스팅":
         }
         
         # E. 결과 시각화
+        # E. 결과 시각화 & SPY Benchmark
+        # SPY 데이터 가져오기
+        plot_spy = [1.0] * len(plot_dates)
+        try:
+            spy_df = yf.download("SPY", start=plot_dates[0], end=pd.to_datetime(plot_dates[-1]) + pd.Timedelta(days=5), progress=False)
+            if isinstance(spy_df.columns, pd.MultiIndex): spy_df.columns = spy_df.columns.get_level_values(0)
+            target_col = 'Adj Close' if 'Adj Close' in spy_df.columns else 'Close'
+            
+            valid_dt = spy_df.index.asof(plot_dates[0])
+            if pd.notna(valid_dt):
+                base_price = spy_df.loc[valid_dt, target_col]
+                temp_spy = []
+                for d in plot_dates:
+                    v_dt = spy_df.index.asof(d)
+                    if pd.notna(v_dt):
+                        temp_spy.append(spy_df.loc[v_dt, target_col] / base_price)
+                    else:
+                        temp_spy.append(1.0)
+                plot_spy = temp_spy
+        except:
+            pass
+
         results_df = pd.DataFrame({
             "Date": plot_dates,
-            "AI Model Portfolio": plot_model,
-            "Benchmark (Equal Weight)": plot_bench
+            "Strategy (AI)": plot_model,
+            "S&P 500 (SPY)": plot_spy,
+            "Benchmark (Equal)": plot_bench
         }).set_index("Date")
         
         st.success(f"학습 완료! ({model_type}) - Horizon: {horizon_option}, Top-{top_k_select}")
         
+        # Prepare Backtest Data Dict for Saving
+        backtest_data_to_save = {}
+        
         if not results_df.empty:
-            total_ret = results_df['AI Model Portfolio'].iloc[-1] - 1
-            bench_ret = results_df['Benchmark (Equal Weight)'].iloc[-1] - 1
-            alpha = total_ret - bench_ret
+            total_ret = results_df['Strategy (AI)'].iloc[-1] - 1
+            spy_ret = results_df['S&P 500 (SPY)'].iloc[-1] - 1
+            eq_ret = results_df['Benchmark (Equal)'].iloc[-1] - 1
             
+            backtest_data_to_save = {
+                "perf_df": results_df,
+                "metrics": {
+                    "Total Return": f"{total_ret:.2%}",
+                    "SPY Return": f"{spy_ret:.2%}",
+                    "EQ Return": f"{eq_ret:.2%}"
+                }
+            }
+
             c1, c2, c3 = st.columns(3)
-            c1.metric("AI 포트폴리오 수익률", f"{total_ret:.2%}", delta=f"{alpha:.2%}")
-            c2.metric("벤치마크 수익률", f"{bench_ret:.2%}")
-            mdd_series = results_df['AI Model Portfolio'] / results_df['AI Model Portfolio'].cummax() - 1
-            mdd = mdd_series.min()
-            c3.metric("최대 낙폭 (MDD)", f"{mdd:.2%}")
+            c1.metric("AI 포트폴리오 수익률 (Cost 0.1%)", f"{total_ret:.2%}")
+            c2.metric("S&P 500 수익률", f"{spy_ret:.2%}")
+            c3.metric("동일 비중 (Equal)", f"{eq_ret:.2%}")
             
             st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
-            fig = px.line(results_df, title=f"{model_type} 기반 Top-{top_k_select} 전략 성과")
-            st.plotly_chart(fig, use_container_width=True)
+            st.line_chart(results_df)
 
             # --- [Persistence Save] ---
             # 학습 완료 후 모델 저장 (자동)
             try:
-                # 앙상블은 모델 구조가 다르므로 저장 방식 유의 (dict or object)
-                # 앞서 모델링 단계에서 'model' 변수가 잘 할당되었음을 가정
+                # 앙상블은 모델 구조가 다르므로 저장 방식 유의
                 model_data_to_save = {
                     "model_type": model_type,
                     "model": model,
@@ -1367,10 +1402,12 @@ elif selection == "🤖 AI 모델 테스팅":
                     "horizon": horizon_option,
                     "top_k": top_k_select,
                     "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    # 중요: 'valid_tickers' 등은 다음번에 재사용 못할 수 있음 (유니버스가 바뀌면?) 
-                    # 하지만 'Fast Inference'를 위해선 저장해두는게 좋음 (같은 유니버스라고 가정)
-                    "valid_tickers": valid_tickers 
+                    "valid_tickers": valid_tickers,
+                    "backtest_data": backtest_data_to_save # Save Performance
                 }
+                
+                # Update Session State too
+                st.session_state.trained_models[model_type] = model_data_to_save
                 # 파일명: Model Type 기반 (특수문자 제거)
                 safe_model_name = model_type.replace(" ", "_").replace("(", "").replace(")", "").replace("+", "_").replace(":", "")
                 save_model_checkpoint(safe_model_name, model_data_to_save)
@@ -1475,27 +1512,27 @@ elif selection == "🤖 AI 모델 테스팅":
         
         tab_analysis, tab_recommend, tab_history = st.tabs(["🔍 모델 분석 (Feature)", "📈 추천 포트폴리오 (Today)", "📜 포트폴리오 히스토리"])
         
-        # [Tab 1: Feature Analysis]
+        # [Tab 1: Model Analysis (Performance)]
         with tab_analysis:
-            model_obj = current_model_info['model']
-            f_cols = current_model_info['feature_cols']
+            backtest_data = current_model_info.get('backtest_data')
             
-            if isinstance(model_obj, dict):
-                 st.info("앙상블 모델은 개별 모델의 조합으로 이루어져 있어 단일 Feature Importance를 제공하지 않습니다.")
-            elif "Linear" in model_type or "LightGBM" in model_type:
-                st.write(f"**Top 20 Important Features** (Total: {len(f_cols)})")
-                try:
-                    if "Linear" in model_type:
-                        importance = np.abs(model_obj.coef_)
-                    else:
-                        importance = model_obj.feature_importances_
-                    
-                    imp_df = pd.DataFrame({"Feature": f_cols, "Importance": importance}).sort_values(by="Importance", ascending=False)
-                    st.bar_chart(imp_df.head(20).set_index("Feature"))
-                except Exception as e:
-                    st.warning(f"Feature Importance 표시 중 오류: {e}")
+            if backtest_data:
+                st.subheader("📈 백테스트 누적 수익률 (Test Period w/ 0.05% Cost)")
+                metrics = backtest_data['metrics']
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("AI 전략 수익률", metrics['Total Return'])
+                c2.metric("S&P 500 수익률", metrics['SPY Return'])
+                c3.metric("동일 비중 (Equal)", metrics['EQ Return'])
+                
+                st.line_chart(backtest_data['perf_df'])
+                
             else:
-                st.info("선택된 모델은 Feature Importance를 지원하지 않습니다.")
+                st.info("⚠️ 백테스트 데이터가 없습니다. 모델을 다시 학습시키면 성과 그래프가 생성됩니다.")
+                
+            # Legacy Feature Importance (Optional to keep below)
+            # st.divider()
+            # ... (Feature Importance Code removed per request to focus on Performance)
 
         # [Tab 2: Recommendations]
         with tab_recommend:
