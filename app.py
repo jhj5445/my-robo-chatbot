@@ -44,6 +44,8 @@ import streamlit.components.v1 as components
 import yfinance as yf
 import plotly.express as px
 import pandas as pd
+import pickle # Added for Persistence
+import datetime
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
@@ -834,27 +836,52 @@ elif selection == "🤖 AI 모델 테스팅":
                 ]
 
             elif universe_preset == "NASDAQ 100 + S&P 500 (Market Proxy)":
-                # Proxy for full market: NASDAQ 100 constituents (approx) + Key S&P 500
-                # 실시간으로 수천 개를 다 받으면 너무 느리므로, 대표 우량주 ~100개로 구성된 Proxy 사용
-                # 사용자가 요청한 '전체' 느낌을 내기 위해 섹터별 대표주를 최대한 많이 포함
-                tickers = [
-                    # Tech
-                    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ADBE", "CRM", "AMD", "INTC", "QCOM", "TXN", "IBM", "ORCL", "CSCO", "MU", "LRCX", "AMAT",
-                    # Finance
-                    "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "PYPL", "BRK-B", "SPGI",
-                    # Health
-                    "LLY", "UNH", "JNJ", "MRK", "ABBV", "PFE", "TMO", "ABT", "DHR", "BMY", "AMGN", "GILD", "ISRG", "VRTX", "REGN",
-                    # Consumer
-                    "AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "WMT", "COST", "PG", "KO", "PEP", "PM", "MO", "CL", "EL",
-                    # Industrial / Energy / etc
-                    "XOM", "CVX", "COP", "SLB", "EOG", "CAT", "DE", "HON", "GE", "LMT", "RTX", "BA", "UPS", "FDX", "UNP", "NEE", "DUK", "SO",
-                    # + NASDAQ 100 extras
-                    "NFLX", "CMCSA", "TMUS", "CHTR", "BKNG", "ADP", "MDLZ", "CSX", "MAR", "CTAS", "KLAC", "SNPS", "CDNS", "PANW", "FTNT",
-                    "MELI", "NXPI", "ORLY", "ROP", "ODFL", "PCAR", "MNST", "KDP", "EXC", "XEL", "IDXX", "BIIB", "MCHP", "ALGN", "DLTR"
-                ]
-                # 중복 제거 및 정렬
-                tickers = sorted(list(set(tickers)))
-                st.caption(f"ℹ️ 속도 최적화를 위해 주요 {len(tickers)}개 우량주로 유니버스를 구성했습니다.")
+                # Option A: Market Proxy (Speed) vs Option B: Full Universe (Sloooow)
+                scan_mode = st.radio("분석 모드 선택", ["🚀 속도 우선 (Top 100 Market Proxy)", "🐢 정밀 분석 (S&P 500 전종목 / ~5 min)"], horizontal=True)
+                
+                if "속도 우선" in scan_mode:
+                    # Proxy for full market: NASDAQ 100 constituents (approx) + Key S&P 500
+                    # 실시간으로 수천 개를 다 받으면 너무 느리므로, 대표 우량주 ~100개로 구성된 Proxy 사용
+                    # 사용자가 요청한 '전체' 느낌을 내기 위해 섹터별 대표주를 최대한 많이 포함
+                    tickers = [
+                        # Tech
+                        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ADBE", "CRM", "AMD", "INTC", "QCOM", "TXN", "IBM", "ORCL", "CSCO", "MU", "LRCX", "AMAT",
+                        # Finance
+                        "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "PYPL", "BRK-B", "SPGI",
+                        # Health
+                        "LLY", "UNH", "JNJ", "MRK", "ABBV", "PFE", "TMO", "ABT", "DHR", "BMY", "AMGN", "GILD", "ISRG", "VRTX", "REGN",
+                        # Consumer
+                        "AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "WMT", "COST", "PG", "KO", "PEP", "PM", "MO", "CL", "EL",
+                        # Industrial / Energy / etc
+                        "XOM", "CVX", "COP", "SLB", "EOG", "CAT", "DE", "HON", "GE", "LMT", "RTX", "BA", "UPS", "FDX", "UNP", "NEE", "DUK", "SO",
+                        # + NASDAQ 100 extras
+                        "NFLX", "CMCSA", "TMUS", "CHTR", "BKNG", "ADP", "MDLZ", "CSX", "MAR", "CTAS", "KLAC", "SNPS", "CDNS", "PANW", "FTNT",
+                        "MELI", "NXPI", "ORLY", "ROP", "ODFL", "PCAR", "MNST", "KDP", "EXC", "XEL", "IDXX", "BIIB", "MCHP", "ALGN", "DLTR"
+                    ]
+                    # 중복 제거 및 정렬
+                    tickers = sorted(list(set(tickers)))
+                    st.caption(f"ℹ️ 속도 최적화를 위해 주요 {len(tickers)}개 우량주로 유니버스를 구성했습니다.")
+                else:
+                    # Full Mode: S&P 500 Constituents + NASDAQ 100 Full
+                    try:
+                        import FinanceDataReader as fdr
+                        with st.spinner("S&P 500 및 NASDAQ 100 전종목을 병합 중입니다..."):
+                            # 1. S&P 500 (Dynamic)
+                            df_sp500 = fdr.StockListing('S&P500')
+                            sp500_tickers = df_sp500['Symbol'].tolist()
+                            
+                            # 2. NASDAQ 100 (Static base + Dynamic merge)
+                            # NASDAQ 100 종목들은 대부분 S&P 500에 포함되지만, 포함되지 않는 것들도 있음 (예: 일부 ADR, 비미국계 등)
+                            # 두 리스트를 합칩니다.
+                            
+                            combined = list(set(sp500_tickers + NASDAQ_100_FULL))
+                            tickers = combined
+                            
+                            # 500개가 넘으므로 진행 상황에 유의하라는 메시지
+                            st.warning(f"⚠️ 총 {len(tickers)}개 종목 (S&P 500 + NASDAQ 100)을 분석합니다. 데이터 다운로드에 시간이 소요됩니다. (3~5분 예상)")
+                    except Exception as e:
+                        st.error(f"종목 리스트를 가져오는데 실패했습니다: {e}")
+                        tickers = ["AAPL", "MSFT"] # Fallback
 
             if universe_preset != "직접 입력":
                 st.info(f"선택된 유니버스: {len(tickers)}개 종목")
@@ -922,101 +949,12 @@ elif selection == "🤖 AI 모델 테스팅":
                 df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] 
                 
-                # ---------------- [Feature Engineering] ----------------
-                feature_cols = []
-                
-                # 1. Light (Basic 5)
-                if "Light" in feature_level:
-                    df['MA5'] = df['Close'].rolling(window=5).mean()
-                    df['MA20'] = df['Close'].rolling(window=20).mean()
-                    df['Disparity_5'] = df['Close'] / df['MA5']
-                    df['Disparity_20'] = df['Close'] / df['MA20']
-                    
-                    # RSI
-                    delta = df['Close'].diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                    rs = gain / loss
-                    df['RSI'] = 100 - (100 / (1 + rs))
-                    
-                    df['Volatility'] = df['Close'].pct_change().rolling(20).std()
-                    df['Momentum_1M'] = df['Close'].pct_change(20)
-                    
-                    feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
-
-                else:
-                    # Standard(22) or Rich(50+)
-                    # 공통: 체계적 Feature 생성 (Windows Loop)
-                    
-                    # Windows 설정
-                    if "Rich" in feature_level:
-                        windows = [3, 5, 10, 20, 40, 60, 120] # Rich: 초단기(3) 및 초장기(120) 추가
-                    else:
-                        windows = [5, 10, 20, 60] # Standard
-
-                    df['Ret_1d'] = df['Close'].pct_change()
-                    
-                    for w in windows:
-                        col_roc = f'ROC_{w}'
-                        df[col_roc] = df['Close'].pct_change(w)
-                        feature_cols.append(col_roc)
-                        
-                        col_ma = f'MA_Dist_{w}'
-                        ma = df['Close'].rolling(window=w).mean()
-                        df[col_ma] = df['Close'] / ma
-                        feature_cols.append(col_ma)
-                        
-                        col_vol = f'Vol_{w}'
-                        df[col_vol] = df['Ret_1d'].rolling(window=w).std()
-                        feature_cols.append(col_vol)
-                        
-                        col_vol_ratio = f'Vol_Ratio_{w}'
-                        vol_ma = df['Volume'].rolling(window=w).mean()
-                        df[col_vol_ratio] = df['Volume'] / vol_ma
-                        feature_cols.append(col_vol_ratio)
-                    
-                    # RSI (Standard: 14, 60 / Rich: 9, 14, 28, 60)
-                    rsi_windows = [9, 14, 28, 60] if "Rich" in feature_level else [14, 60]
-                    for rsi_w in rsi_windows:
-                        delta = df['Close'].diff()
-                        gain = (delta.where(delta > 0, 0)).rolling(rsi_w).mean()
-                        loss = (-delta.where(delta < 0, 0)).rolling(rsi_w).mean()
-                        rs = gain / loss
-                        col_rsi = f'RSI_{rsi_w}'
-                        df[col_rsi] = 100 - (100 / (1 + rs))
-                        feature_cols.append(col_rsi)
-
-                    # [Rich Only Features] 추가
-                    if "Rich" in feature_level:
-                        # 1. Lagged Returns (시계열 패턴)
-                        for lag in [1, 2, 3, 5]:
-                            col_lag = f'Ret_Lag_{lag}'
-                            df[col_lag] = df['Ret_1d'].shift(lag)
-                            feature_cols.append(col_lag)
-                        
-                        # 2. Candle Patterns
-                        # Body Ratio (몸통 길이 / 전체 길이)
-                        df['Candle_Body'] = (df['Close'] - df['Open']).abs()
-                        df['Candle_Len'] = (df['High'] - df['Low'])
-                        df['Body_Ratio'] = df['Candle_Body'] / df['Candle_Len'].replace(0, 1) # Div by zero 방지
-                        feature_cols.append('Body_Ratio')
-                        
-                        # Shadow Upper/Lower
-                        df['Shadow_Upper'] = (df['High'] - df[['Open', 'Close']].max(axis=1)) / df['Candle_Len'].replace(0, 1)
-                        df['Shadow_Lower'] = (df[['Open', 'Close']].min(axis=1) - df['Low']) / df['Candle_Len'].replace(0, 1)
-                        feature_cols.append('Shadow_Upper')
-                        feature_cols.append('Shadow_Lower')
-                        
-                        # 3. Day of Week (요일 효과)
-                        # 원핫 인코딩 대신 간단히 숫자로 (트리 모델은 이거면 충분)
-                        df['DayOfWeek'] = df.index.dayofweek
-                        feature_cols.append('DayOfWeek')
+                # ---------------- [Feature Engineering (Refactored)] ----------------
+                df, feature_cols = calculate_feature_set(df, feature_level)
 
                 # Label (Target): 다음날 수익률 or 2주 후 수익률
                 if "2 Weeks" in horizon_option:
                     # 10거래일 후의 수익률 (2주)
-                    # Future Return = (Price[t+10] - Price[t]) / Price[t]
-                    # shift(-10)
                     df['Next_Return'] = df['Close'].pct_change(10).shift(-10)
                 else:
                     # 1일 후 (단기)
@@ -1075,48 +1013,135 @@ elif selection == "🤖 AI 모델 테스팅":
         X_train_scaled = scaler.fit_transform(X_train)
         
         # Model Fitting
-        if "Linear" in model_type:
+        if "Ensemble" in model_type:
+             # 앙상블 모델 학습
+            st.info("⭐ 앙상블 모드: 3가지 모델(Linear, LightGBM, SVM)을 모두 학습합니다...")
+            
+            # 1. Linear
+            model_lin = LinearRegression()
+            model_lin.fit(X_train_scaled, y_train)
+            
+            # 2. LightGBM
+            try:
+                import lightgbm as lgb
+                model_lgb = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, random_state=42)
+                model_lgb.fit(X_train_scaled, y_train)
+            except ImportError:
+                st.warning("LightGBM not installed. Using Linear instead.")
+                model_lgb = model_lin
+
+            # 3. SVM (SVR)
+            from sklearn.svm import SVR
+            # 데이터가 너무 많으면 SVR은 느림. 샘플링하거나 LinearSVR 사용
+            if len(X_train) > 5000:
+                from sklearn.svm import LinearSVR
+                model_svr = LinearSVR(random_state=42, max_iter=1000)
+            else:
+                model_svr = SVR(kernel='rbf')
+            
+            model_svr.fit(X_train_scaled, y_train)
+            
+            # 앙상블은 3개 모델 딕셔너리로 저장
+            model = {
+                "Linear": model_lin,
+                "LightGBM": model_lgb,
+                "SVM": model_svr
+            }
+
+        elif "Linear" in model_type:
             model = LinearRegression()
+            model.fit(X_train_scaled, y_train)
         elif "SVM" in model_type:
             if len(X_train) > 10000:
                 st.warning("데이터가 많아 SVM 학습 속도가 느릴 수 있습니다.")
             model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+            model.fit(X_train_scaled, y_train)
         elif "LightGBM" in model_type:
+            import lightgbm as lgb
             model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
+            model.fit(X_train_scaled, y_train)
             
-        model.fit(X_train_scaled, y_train)
         progress_bar.progress(0.7)
         
         # C. 예측 및 백테스팅 (Dynamic Top-K)
         status_text.text(f"백테스팅 시뮬레이션 중 (Top {top_k_select})...")
         
+        # 앙상블 예측 함수
+        def predict_ensemble(models, X):
+            p1 = models["Linear"].predict(X)
+            p2 = models["LightGBM"].predict(X)
+            p3 = models["SVM"].predict(X)
+            # 단순 평균
+            return (p1 + p2 + p3) / 3
+
         all_test_dates = sorted(list(set().union(*[d.index for d in test_datasets.values()])))
         
-        strategy_capital = 1.0 
-        benchmark_capital = 1.0
-        portfolio_curve = []
-        benchmark_curve = []
-        dates = []
+        # Holding Period Check
+        holding_period = 10 if "2 Weeks" in horizon_option else 1
+        rebalance_dates = all_test_dates[::holding_period]
         
-        current_capital = 1.0
+        # 진행상황용
+        total_steps = len(rebalance_dates) - 1
         
-        for date in all_test_dates:
-            daily_scores = []
-            daily_returns = [] 
+        cum_ret_model = 1.0
+        cum_ret_bench = 1.0
+        
+        plot_dates = []
+        plot_model = []
+        plot_bench = []
+        
+        for i in range(total_steps):
+            curr_date = rebalance_dates[i]
+            next_date = rebalance_dates[i+1] # 다음 리밸런싱 날짜
+            
+            # 현재 시점 데이터로 예측
+            candidates = []
             
             for ticker in valid_tickers:
-                if ticker in test_datasets and date in test_datasets[ticker].index:
-                    row = test_datasets[ticker].loc[date]
+                if ticker in test_datasets and curr_date in test_datasets[ticker].index:
+                    df = test_datasets[ticker]
+                    row = df.loc[curr_date]
+                    
+                    # Feature
                     feats = row[feature_cols].values.reshape(1, -1)
                     feats_scaled = scaler.transform(feats)
-                    score = model.predict(feats_scaled)[0]
-                    daily_scores.append((ticker, score, row['Next_Return']))
-                    daily_returns.append(row['Next_Return'])
+                    
+                    # Score
+                    if isinstance(model, dict): # Ensemble
+                        score = predict_ensemble(model, feats_scaled)[0]
+                    else:
+                        score = model.predict(feats_scaled)[0]
+
+                    # Actual Return (curr_date -> next_date)
+                    actual_ret = 0.0
+                    try:
+                        p_start = df.loc[curr_date, 'Close']
+                        # next_date가 없으면 그 미래 어딘가.. nearest?
+                        # 단순화: next_date가 존재하면 씀. 아니면 마지막.
+                        if next_date in df.index:
+                            p_end = df.loc[next_date, 'Close']
+                        else:
+                            # next_date가 df범위를 벗어날 수도 있음 (개별 종목 상폐 등)
+                            # rebalance_date logic is global, but individual ticker might end early.
+                            sub_df = df.loc[curr_date:]
+                            if not sub_df.empty:
+                                p_end = sub_df.iloc[-1]['Close']
+                            else:
+                                p_end = p_start
+                        
+                        actual_ret = (p_end / p_start) - 1
+                    except:
+                        actual_ret = 0.0
+
+                    candidates.append({
+                        "ticker": ticker,
+                        "score": score,
+                        "ret": actual_ret
+                    })
             
-            if not daily_scores:
+            if not candidates:
                 continue
                 
-            # Benchmark
             # Score 기준 정렬
             candidates.sort(key=lambda x: x['score'], reverse=True)
             
@@ -1176,6 +1201,115 @@ elif selection == "🤖 AI 모델 테스팅":
             st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
             fig = px.line(results_df, title=f"{model_type} 기반 Top-{top_k_select} 전략 성과")
             st.plotly_chart(fig, use_container_width=True)
+
+            # --- [Persistence Save] ---
+            # 학습 완료 후 모델 저장 (자동)
+            try:
+                # 앙상블은 모델 구조가 다르므로 저장 방식 유의 (dict or object)
+                # 앞서 모델링 단계에서 'model' 변수가 잘 할당되었음을 가정
+                model_data_to_save = {
+                    "model_type": model_type,
+                    "model": model,
+                    "scaler": scaler,
+                    "feature_cols": feature_cols,
+                    "feature_level": feature_level,
+                    "horizon": horizon_option,
+                    "top_k": top_k_select,
+                    "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    # 중요: 'valid_tickers' 등은 다음번에 재사용 못할 수 있음 (유니버스가 바뀌면?) 
+                    # 하지만 'Fast Inference'를 위해선 저장해두는게 좋음 (같은 유니버스라고 가정)
+                    "valid_tickers": valid_tickers 
+                }
+                # 파일명: Model Type 기반 (특수문자 제거)
+                safe_model_name = model_type.replace(" ", "_").replace("(", "").replace(")", "").replace("+", "_").replace(":", "")
+                save_model_checkpoint(safe_model_name, model_data_to_save)
+                st.toast(f"✅ 모델 자동 저장 완료: {safe_model_name}")
+            except Exception as e:
+                st.error(f"모델 저장 실패: {e}")
+
+    # [Fast Inference Button Logic]
+    # 모델 학습 버튼 옆에 '저장된 모델 불러오기' 버튼이 있으면 좋겠지만, UI 레이아웃상
+    # '2. 실행 (학습 버튼)' 아래에 조건을 두거나 병렬로 둠.
+    
+    # Check for existing saved model for current selection
+    safe_curr_model_name = model_type.replace(" ", "_").replace("(", "").replace(")", "").replace("+", "_").replace(":", "")
+    loaded_model_data = load_model_checkpoint(safe_curr_model_name)
+    
+    if loaded_model_data:
+        saved_ts = loaded_model_data.get('timestamp', 'Unknown')
+        st.info(f"💡 이전에 학습된 모델이 있습니다 ({saved_ts}). 재학습 없이 바로 결과를 보시겠습니까?")
+        if st.button("⚡ 저장된 모델로 바로 분석 (Fast Inference)"):
+            status_text = st.empty()
+            progress_bar = st.progress(0)
+            status_text.text("최신 데이터 다운로드 중 (Fast Mode - Last 200 Days)...")
+            
+            # Load Params
+            model = loaded_model_data['model']
+            scaler = loaded_model_data['scaler']
+            feature_cols = loaded_model_data['feature_cols']
+            saved_tickers = loaded_model_data.get('valid_tickers', [])
+            
+            # Use current tickers logic? Or saved? 
+            # User wants to run on CURRENT universe but with SAVED model?
+            # Generally, model trained on Tickers A,B,C might not work well on D,E,F if features are generic enough?
+            # AI models are trained on patterns. Features (MA, RSI) are generic.
+            # So we can apply saved model to NEW universe or CURRENT universe selection.
+            # Let's use the CURRENT UI selection 'tickers' to be flexible.
+            target_tickers = tickers if tickers else saved_tickers
+            
+            fast_data = {}
+            fast_valid_tickers = []
+            
+            # Fast Download (Short period)
+            end_date = pd.to_datetime("today")
+            # Feature calculation needs ~120 days buffer
+            start_date_fast = end_date - pd.Timedelta(days=365) # 1 year safe buffer
+            
+            for i, ticker in enumerate(target_tickers):
+                try:
+                    df = yf.download(ticker, start=start_date_fast, end=end_date, progress=False)
+                    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+                    if 'Adj Close' not in df.columns:
+                        if 'Close' in df.columns: df['Adj Close'] = df['Close']
+                        else: continue
+                    
+                    df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
+                    df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                    
+                    # Feature Engineer
+                    df, _ = calculate_feature_set(df, loaded_model_data['feature_level'])
+                    
+                    # Drop NaN
+                    df.dropna(inplace=True)
+                    
+                    if not df.empty:
+                        fast_data[ticker] = df
+                        fast_valid_tickers.append(ticker)
+                        
+                except:
+                    pass
+                progress_bar.progress((i+1)/len(target_tickers))
+            
+            status_text.text("AI 모델 예측 수행 중...")
+            
+            # Prepare Session State for Results (Mocking the 'trained_models' state for the result viewer)
+            # But wait, result viewer expects full_data, etc. 
+            # We should populate session_state exactly as if we trained.
+            
+            st.session_state.trained_models[model_type] = {
+                "model": model,
+                "scaler": scaler,
+                "feature_cols": feature_cols,
+                "full_data": fast_data, # Only recent data
+                "valid_tickers": fast_valid_tickers,
+                "top_k": top_k_select, # Allow changing top_k for inference
+                "feature_level": loaded_model_data['feature_level'],
+                "horizon": horizon_option
+            }
+            
+            st.success(f"⚡ 빠른 분석 완료! 하단 '오늘의 추천 PICK'에서 결과를 확인하세요.")
+            status_text.empty()
+
             
         # Feature Importance (for Single Models only)
         if isinstance(model, dict):
@@ -2227,6 +2361,140 @@ def load_portfolio_history():
         except:
             return {}
     return {}
+
+# NASDAQ 100 Full List (Static) - Since standard library fetching of specific index is hard
+NASDAQ_100_FULL = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ADBE", "COST",
+    "PEP", "CSCO", "NFLX", "AMD", "TMUS", "INTC", "TXN", "QCOM", "AMGN", "HON",
+    "AMAT", "INTU", "SBUX", "ADP", "BKNG", "GILD", "ISRG", "MDLZ", "REGN", "VRTX",
+    "LRCX", "ADI", "PANW", "MU", "SNPS", "CDNS", "CHTR", "KLAC", "CSX", "MAR",
+    "CRWD", "MELI", "NXPI", "ORLY", "CTAS", "MNST", "ROP", "LULU", "ODFL", "PCAR",
+    "PAYX", "FTNT", "KDP", "EXC", "XEL", "IDXX", "BIIB", "AEP", "MCHP", "ALGN",
+    "DLTR", "EA", "AZN", "WBD", "FAST", "CTSH", "BKR", "GFS", "VRSK", "KHC",
+    "GEHC", "TEAM", "SGEN", "ZS", "DDOG", "FANG", "ON", "ANSS", "CDW", "TTD",
+    "WBA", "ILMN", "SIRI", "ZM", "ENPH", "JD", "PDD", "BIDU", "NTES", "CEG",
+    "FISV", "ATVI", "MRVL", "MRNA", "DXCM", "LCID", "RIVN", "WDAY", "EBAY", "SPLK"
+]
+
+# Model Persistence directory
+MODEL_SAVE_DIR = "saved_models"
+if not os.path.exists(MODEL_SAVE_DIR):
+    os.makedirs(MODEL_SAVE_DIR)
+
+def save_model_checkpoint(model_name, data):
+    """
+    model_name: str (e.g., 'Ensemble', 'Linear')
+    data: dict containing model, scaler, feature_cols, etc.
+    """
+    try:
+        filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
+        with open(filepath, "wb") as f:
+            pickle.dump(data, f)
+        return True
+    except Exception as e:
+        print(f"Error saving model: {e}")
+        return False
+
+def load_model_checkpoint(model_name):
+    try:
+        filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                return pickle.load(f)
+    except Exception as e:
+        print(f"Error loading model: {e}")
+    return None
+
+def calculate_feature_set(df, feature_level):
+    """
+    Centralized Feature Engineering Logic
+    Returns: (df with features, list of feature column names)
+    """
+    df = df.copy()
+    feature_cols = []
+    
+    # 1. Light (Basic 5)
+    if "Light" in feature_level:
+        df['MA5'] = df['Close'].rolling(window=5).mean()
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['Disparity_5'] = df['Close'] / df['MA5']
+        df['Disparity_20'] = df['Close'] / df['MA20']
+        
+        # RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        df['Volatility'] = df['Close'].pct_change().rolling(20).std()
+        df['Momentum_1M'] = df['Close'].pct_change(20)
+        
+        feature_cols = ['Disparity_5', 'Disparity_20', 'RSI', 'Volatility', 'Momentum_1M']
+
+    else:
+        # Standard(22) or Rich(50+)
+        if "Rich" in feature_level:
+            windows = [3, 5, 10, 20, 40, 60, 120]
+        else:
+            windows = [5, 10, 20, 60]
+
+        df['Ret_1d'] = df['Close'].pct_change()
+        
+        for w in windows:
+            col_roc = f'ROC_{w}'
+            df[col_roc] = df['Close'].pct_change(w)
+            feature_cols.append(col_roc)
+            
+            col_ma = f'MA_Dist_{w}'
+            ma = df['Close'].rolling(window=w).mean()
+            df[col_ma] = df['Close'] / ma
+            feature_cols.append(col_ma)
+            
+            col_vol = f'Vol_{w}'
+            df[col_vol] = df['Ret_1d'].rolling(window=w).std()
+            feature_cols.append(col_vol)
+            
+            col_vol_ratio = f'Vol_Ratio_{w}'
+            vol_ma = df['Volume'].rolling(window=w).mean()
+            df[col_vol_ratio] = df['Volume'] / vol_ma
+            feature_cols.append(col_vol_ratio)
+        
+        # RSI
+        rsi_windows = [9, 14, 28, 60] if "Rich" in feature_level else [14, 60]
+        for rsi_w in rsi_windows:
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(rsi_w).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(rsi_w).mean()
+            rs = gain / loss
+            col_rsi = f'RSI_{rsi_w}'
+            df[col_rsi] = 100 - (100 / (1 + rs))
+            feature_cols.append(col_rsi)
+
+        # [Rich Only Features]
+        if "Rich" in feature_level:
+            # Lagged Returns
+            for lag in [1, 2, 3, 5]:
+                col_lag = f'Ret_Lag_{lag}'
+                df[col_lag] = df['Ret_1d'].shift(lag)
+                feature_cols.append(col_lag)
+            
+            # Candle Patterns
+            df['Candle_Body'] = (df['Close'] - df['Open']).abs()
+            df['Candle_Len'] = (df['High'] - df['Low'])
+            df['Body_Ratio'] = df['Candle_Body'] / df['Candle_Len'].replace(0, 1)
+            feature_cols.append('Body_Ratio')
+            
+            df['Shadow_Upper'] = (df['High'] - df[['Open', 'Close']].max(axis=1)) / df['Candle_Len'].replace(0, 1)
+            df['Shadow_Lower'] = (df[['Open', 'Close']].min(axis=1) - df['Low']) / df['Candle_Len'].replace(0, 1)
+            feature_cols.append('Shadow_Upper')
+            feature_cols.append('Shadow_Lower')
+            
+            # Day of Week
+            df['DayOfWeek'] = df.index.dayofweek
+            feature_cols.append('DayOfWeek')
+            
+    return df, feature_cols
 
 def save_portfolio_history(history_data):
     try:
