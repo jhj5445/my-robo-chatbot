@@ -1795,28 +1795,42 @@ elif selection == "🤖 AI 모델 테스팅":
         # [Tab 3: History]
         with tab_history:
             st.subheader("📜 포트폴리오 관리 이력")
-            hist_data = load_portfolio_history()
+            
+            # [Debug: Explicit Load Check]
+            hist_data = {}
+            if os.path.exists(PORTFOLIO_HISTORY_FILE):
+                try:
+                    with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
+                        raw_txt = f.read()
+                        # st.text(f"Debug Raw: {raw_txt[:100]}...") # Optional Debug
+                        hist_data = json.loads(raw_txt)
+                except Exception as e:
+                    st.error(f"히스토리 파일 로드 실패: {e}")
             
             # [Download Button for Git Persistence]
             if os.path.exists(PORTFOLIO_HISTORY_FILE):
-                with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
-                    json_bytes = f.read().encode("utf-8")
-                st.download_button(
-                    label="📥 전체 포트폴리오 히스토리 다운로드 (.json)",
-                    data=json_bytes,
-                    file_name="ai_portfolio_history.json",
-                    mime="application/json",
-                    help="GitHub에 커밋하여 이력을 보존하세요."
-                )
-                
+                 with open(PORTFOLIO_HISTORY_FILE, "r", encoding="utf-8") as f:
+                     json_bytes = f.read().encode("utf-8")
+                 st.download_button(
+                     label="📥 전체 포트폴리오 히스토리 다운로드 (.json)",
+                     data=json_bytes,
+                     file_name="ai_portfolio_history.json",
+                     mime="application/json",
+                     help="GitHub에 커밋하여 이력을 보존하세요."
+                 )
+            
             if hist_data:
-                # Pretty print or table
+                st.success(f"총 {len(hist_data)}개의 포트폴리오가 로드되었습니다.")
                 for m_name, info in hist_data.items():
                     with st.expander(f"{m_name} ({info['date']})", expanded=True):
                         st.write(f"**Items:** {', '.join(info['items'])}")
                         st.caption(f"Horizon: {info['horizon']}")
+                        # Show weights table
+                        if 'weights' in info:
+                            w_df = pd.DataFrame(list(info['weights'].items()), columns=['Ticker', 'Weight'])
+                            st.dataframe(w_df, use_container_width=True, height=150)
             else:
-                st.info("아직 저장된 포트폴리오가 없습니다.")
+                st.info("아직 저장된 포트폴리오가 없습니다. (데이터가 비어있음)")
 
 
 
