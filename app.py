@@ -1372,7 +1372,9 @@ elif selection == "🤖 AI 모델 테스팅":
         # Prepare Backtest Data Dict for Saving
         backtest_data_to_save = {}
         
-        if not results_df.empty:
+        if results_df.empty:
+            st.warning("⚠️ 백테스트 기간 동안 매매 신호가 발생하지 않았거나 데이터가 부족하여 결과 그래프를 그릴 수 없습니다.")
+        else:
             total_ret = results_df['Strategy (AI)'].iloc[-1] - 1
             spy_ret = results_df['S&P 500 (SPY)'].iloc[-1] - 1
             eq_ret = results_df['Benchmark (Equal)'].iloc[-1] - 1
