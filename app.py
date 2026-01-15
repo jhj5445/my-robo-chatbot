@@ -2495,8 +2495,6 @@ NASDAQ_100_FULL = [
 # Model Persistence directory
 # Helper functions moved to top
 def save_portfolio_history(history_data):
-
-def save_portfolio_history(history_data):
     try:
         with open(PORTFOLIO_HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history_data, f, ensure_ascii=False, indent=4)
