@@ -1396,50 +1396,49 @@ elif selection == "🤖 AI 모델 테스팅":
             st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
             st.line_chart(results_df)
 
-            # --- [Persistence Save] ---
-            # 학습 완료 후 모델 저장 (자동)
-            try:
-                # 앙상블은 모델 구조가 다르므로 저장 방식 유의
-                model_data_to_save = {
-                    "model_type": model_type,
-                    "model": model,
-                    "scaler": scaler,
-                    "feature_cols": feature_cols,
-                    "feature_level": feature_level,
-                    "horizon": horizon_option,
-                    "top_k": top_k_select,
-                    "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    "valid_tickers": valid_tickers,
-                    "backtest_data": backtest_data_to_save # Save Performance
-                }
-                
-                # Update Session State too
-                st.session_state.trained_models[model_type] = model_data_to_save
-                
-                # 파일명: {Model}_{Horizon}_{Feat}_{TopK}_{Date}.pkl
-                safe_type = model_type.replace(" ", "").replace("(", "").replace(")", "").replace("+", "")
-                safe_feat = feature_level.split(" ")[0] # Light, Standard, Rich
-                safe_horizon = horizon_option.replace(" ", "")
-                today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
-                
-                file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{today_str}"
-                
-                save_model_checkpoint(file_name_ver, model_data_to_save)
-                st.toast(f"✅ 모델 자동 저장 완료: {file_name_ver}")
-                
-                # [Download Button for Git Persistence]
-                saved_path = os.path.join(MODEL_SAVE_DIR, f"{file_name_ver}.pkl")
-                if os.path.exists(saved_path):
-                    with open(saved_path, "rb") as f:
-                        btn = st.download_button(
-                            label=f"📥 모델 파일 다운로드 (.pkl) - {file_name_ver}",
-                            data=f,
-                            file_name=f"{file_name_ver}.pkl",
-                            mime="application/octet-stream",
-                            help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다."
-                        )
-            except Exception as e:
-                st.error(f"모델 저장 실패: {e}")
+        # [Persistence Save] (Executed regardless of backtest result)
+        try:
+            # 앙상블은 모델 구조가 다르므로 저장 방식 유의
+            model_data_to_save = {
+                "model_type": model_type,
+                "model": model,
+                "scaler": scaler,
+                "feature_cols": feature_cols,
+                "feature_level": feature_level,
+                "horizon": horizon_option,
+                "top_k": top_k_select,
+                "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "valid_tickers": valid_tickers,
+                "backtest_data": backtest_data_to_save # Save Performance
+            }
+            
+            # Update Session State too
+            st.session_state.trained_models[model_type] = model_data_to_save
+            
+            # 파일명: {Model}_{Horizon}_{Feat}_{TopK}_{Date}.pkl
+            safe_type = model_type.replace(" ", "").replace("(", "").replace(")", "").replace("+", "")
+            safe_feat = feature_level.split(" ")[0] # Light, Standard, Rich
+            safe_horizon = horizon_option.replace(" ", "")
+            today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
+            
+            file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{today_str}"
+            
+            save_model_checkpoint(file_name_ver, model_data_to_save)
+            st.toast(f"✅ 모델 자동 저장 완료: {file_name_ver}")
+            
+            # [Download Button for Git Persistence]
+            saved_path = os.path.join(MODEL_SAVE_DIR, f"{file_name_ver}.pkl")
+            if os.path.exists(saved_path):
+                with open(saved_path, "rb") as f:
+                    btn = st.download_button(
+                        label=f"📥 모델 파일 다운로드 (.pkl) - {file_name_ver}",
+                        data=f,
+                        file_name=f"{file_name_ver}.pkl",
+                        mime="application/octet-stream",
+                        help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다."
+                    )
+        except Exception as e:
+            st.error(f"모델 저장 실패: {e}")
 
     # [Fast Inference Button Logic]
     # 모델 학습 버튼 옆에 '저장된 모델 불러오기' 버튼이 있으면 좋겠지만, UI 레이아웃상
