@@ -1504,45 +1504,30 @@ elif selection == "🤖 AI 모델 테스팅":
             saved_top_k = current_model_info.get("top_k", 3)
             saved_horizon = current_model_info.get("horizon", "1 Day")
 
+            # Cache Key for SCORES only
+            today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
+            score_cache_key = f"scores_{model_type}_{today_str}_{saved_top_k}"
+            
             # --- [Persistence Load] ---
             portfolio_history = load_portfolio_history()
             last_portfolio = portfolio_history.get(model_type, None)
             
             if last_portfolio:
                 with st.expander(f"📅 지난 저장 포트폴리오 (비교군) - {last_portfolio['date']}", expanded=False):
-                    st.write(f"**Items:** {', '.join(last_portfolio['items'])}")
-                    st.caption("새로운 추천 결과와 비교하여 리밸런싱 가이드를 제공합니다.")
+                    items_str = ", ".join(last_portfolio['items'])
+                    st.info(f"**Items ({len(last_portfolio['items'])}):** {items_str}")
 
-            # Cache Key
-            today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
-            cache_key = f"{model_type}_{today_str}_{saved_top_k}_{saved_horizon}"
+            # ---------------------------------------------------------
+            # 1. AI Score Calculation (Fast Inference) or Load from Cache
+            # ---------------------------------------------------------
+            top_k_items = []
             
-            if cache_key in st.session_state.gemini_insights:
-                st.success(f"⚡ 분석 결과 (Date: {today_str})")
-                cached_data = st.session_state.gemini_insights[cache_key]
-                
-                st.write(f"**추천 종목 ({len(cached_data['top_k_items'])}개)**")
-                cols = st.columns(min(len(cached_data['top_k_items']), 4))
-                for i, item in enumerate(cached_data['top_k_items']):
-                    with cols[i % 4]:
-                        st.info(f"**{i+1}위: {item['Ticker']}**\n\nScore: {item['Score']:.4f}")
-                
-                st.markdown(cached_data['insight'])
-                
-                if st.button("💾 이 포트폴리오 저장하기 (현재 운용 설정)"):
-                    new_items = [item['Ticker'] for item in cached_data['top_k_items']]
-                    portfolio_history[model_type] = {
-                        "date": today_str,
-                        "items": new_items,
-                        "horizon": saved_horizon
-                    }
-                    save_portfolio_history(portfolio_history)
-                    st.toast("✅ 포트폴리오 저장 완료!")
-                    time.sleep(1)
-                    st.rerun()
+            if score_cache_key in st.session_state.gemini_insights: # We reuse this dict for general caching
+                top_k_items = st.session_state.gemini_insights[score_cache_key]['items']
+                st.success(f"⚡ 분석 완료 (Cached: {today_str})")
             else:
-                if st.button("🚀 추천 종목 분석 실행 (Gemini)"):
-                    with st.spinner(f"최신 데이터 분석 중... (Top {saved_top_k})"):
+                if st.button("🚀 AI 추천 종목 산출 (Fast Inference)"):
+                    with st.spinner(f"최신 데이터 분석 및 AI 스코어링 중... (Top {saved_top_k})"):
                         model = current_model_info['model']
                         scaler = current_model_info['scaler']
                         feature_cols = current_model_info['feature_cols']
@@ -1571,49 +1556,108 @@ elif selection == "🤖 AI 모델 테스팅":
                                 else:
                                     score = model.predict(feats_scaled)[0]
                                 
+                                # Feature Snapshot for Report
                                 feat_dict = {}
-                                # Feature Extraction for Prompt
                                 check_list = ["RSI_14", "RSI", "ROC_20", "Momentum_1M", "MA_Dist_20", "Disparity_20", "Vol_20", "Volatility"]
                                 for c in check_list:
                                     if c in last_row.columns:
-                                        feat_dict[c] = f"{last_row[c].values[0]:.2f}"
-
-                                if not feat_dict: feat_dict = {"Score": f"{score:.4f}"}
+                                        feat_dict[c] = float(last_row[c].values[0])
 
                                 today_scores.append({
-                                    "Ticker": ticker, "Score": score, "Date": last_date, "Features": feat_dict
+                                    "Ticker": ticker, "Score": float(score), "Date": last_date, "Features": feat_dict
                                 })
                             except: pass
                         
+                        # Sort & Top-K
                         today_scores.sort(key=lambda x: x['Score'], reverse=True)
                         top_k_items = today_scores[:saved_top_k]
                         
                         if top_k_items:
-                            # Gemini Prompt
-                            prompt_context = f"Model: {model_type}\nHorizon: {saved_horizon}\nStrategy: Buy Top {saved_top_k}\n\n"
-                            prompt_context += "## New Portfolio:\n"
-                            for i, item in enumerate(top_k_items):
-                                prompt_context += f"{i+1}. {item['Ticker']} (Score: {item['Score']:.5f}) - {item['Features']}\n"
-                            
-                            if last_portfolio:
-                                prompt_context += f"\n## Previous Portfolio ({last_portfolio['date']}):\nItems: {', '.join(last_portfolio['items'])}\n"
-                                prompt_context += "\n[Task] Compare New vs Previous. Suggest SELL/BUY/ADJUST actions.\n"
-                            else:
-                                prompt_context += "\n[Task] Initial Portfolio Construction.\n"
-
-                            prompt_context += "\nAct as CIO. Write report in Korean.\n1. Market Context\n2. Portfolio Weights (%)\n3. Rebalancing Guide (SELL/BUY/ADJUST)"
-                            
-                            try:
-                                insight_text = generate_content_with_rotation(prompt_context, model_name="gemini-3-flash-preview")
-                                st.session_state.gemini_insights[cache_key] = {
-                                    "top_k_items": top_k_items,
-                                    "insight": insight_text
-                                }
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Gemini Error: {e}")
+                            # Cache Immediate Result
+                            st.session_state.gemini_insights[score_cache_key] = {'items': top_k_items}
+                            st.rerun()
                         else:
-                            st.warning("예측 가능한 종목이 없습니다.")
+                            st.warning("분석 가능한 종목이 없습니다 (데이터 부족).")
+
+            # ---------------------------------------------------------
+            # 2. Immediate Display (Local Calculation)
+            # ---------------------------------------------------------
+            if top_k_items:
+                # Calculate Weights (Proportional to Score, Min 0)
+                total_score = sum([max(0, x['Score']) for x in top_k_items])
+                if total_score == 0: total_score = 1 # Avoid div by zero
+                
+                for item in top_k_items:
+                    # Simple heuristic: Weight based on positive score
+                    w = (max(0, item['Score']) / total_score) * 100
+                    item['Weight'] = w
+
+                # A. Summary Cards
+                st.divider()
+                st.subheader("🎯 추천 포트폴리오 산출 결과")
+                
+                res_df = pd.DataFrame(top_k_items)
+                res_df = res_df[['Ticker', 'Score', 'Weight', 'Date']]
+                res_df['Weight'] = res_df['Weight'].map('{:.1f}%'.format)
+                res_df['Score'] = res_df['Score'].map('{:.4f}'.format)
+                
+                # Highlight Table
+                st.dataframe(res_df.style.highlight_max(axis=0, subset=['Score']), use_container_width=True)
+                
+                # B. Save Button (Immediate)
+                col_save, col_report = st.columns([1, 1])
+                with col_save:
+                    if st.button("💾 포트폴리오 저장 (확정)"):
+                        new_items = [item['Ticker'] for item in top_k_items]
+                        portfolio_history[model_type] = {
+                            "date": today_str,
+                            "items": new_items,
+                            "horizon": saved_horizon,
+                            "weights": {x['Ticker']: x['Weight'] for x in top_k_items}
+                        }
+                        save_portfolio_history(portfolio_history)
+                        st.toast("✅ 저장되었습니다!", icon="💾")
+                        time.sleep(1)
+                        st.rerun()
+
+                # ---------------------------------------------------------
+                # 3. Optional AI Analysis (Gemini)
+                # ---------------------------------------------------------
+                report_cache_key = f"report_{model_type}_{today_str}_{saved_top_k}"
+                
+                with col_report:
+                    if report_cache_key in st.session_state.gemini_insights:
+                        st.success("✅ AI 보고서 생성 완료")
+                    else:
+                        if st.button("📋 AI 심층 분석 보고서 생성 (Gemini)"):
+                            with st.spinner("Gemini가 시장 상황과 종목을 분석하여 보고서를 작성 중입니다..."):
+                                try:
+                                    # Prompt Construction
+                                    prompt = f"""
+                                    Role: Experienced CIO.
+                                    Target Portfolio (Top {saved_top_k}):
+                                    {[f"{x['Ticker']} (Score: {x['Score']:.4f}, Weight: {x['Weight']})" for x in top_k_items]}
+                                    
+                                    Previous Portfolio: {last_portfolio['items'] if last_portfolio else 'None'}
+                                    
+                                    Task:
+                                    1. Analyze why these stocks were selected (high scores).
+                                    2. Provide a Rebalancing Strategy (Sell previous stocks not in filtered list? Buy new ones?).
+                                    3. Comment on the suggested weights.
+                                    
+                                    Output in Korean. Markdown format.
+                                    """
+                                    insight = generate_content_with_rotation(prompt)
+                                    st.session_state.gemini_insights[report_cache_key] = insight
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"AI 분석 실패: {e}")
+
+                # Display Report if exists
+                if report_cache_key in st.session_state.gemini_insights:
+                    st.markdown("---")
+                    st.subheader("📑 AI CIO 심층 분석 보고서")
+                    st.markdown(st.session_state.gemini_insights[report_cache_key])
 
         # [Tab 3: History]
         with tab_history:
