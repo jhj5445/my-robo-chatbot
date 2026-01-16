@@ -1416,9 +1416,15 @@ elif selection == "🤖 AI 모델 테스팅":
             st.session_state.trained_models[model_type] = model_data_to_save
             
             # 파일명: {Model}_{Horizon}_{Feat}_{TopK}_{Date}.pkl
-            safe_type = model_type.replace(" ", "").replace("(", "").replace(")", "").replace("+", "")
+            # [Fix] Aggressive Sanitization for Windows/Cloud Compatibility
+            def sanitize_filename(s):
+                # Remove emojis, special chars, keep alphanumeric, spaces, hyphens, underscores
+                s = re.sub(r'[^\w\s-]', '', s) # Remove non-word except space/hyphen
+                return s.replace(" ", "")
+            
+            safe_type = sanitize_filename(model_type)
+            safe_horizon = sanitize_filename(horizon_option)
             safe_feat = feature_level.split(" ")[0] # Light, Standard, Rich
-            safe_horizon = horizon_option.replace(" ", "")
             today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
             
             file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{today_str}"
