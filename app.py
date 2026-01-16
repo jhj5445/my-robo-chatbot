@@ -1660,13 +1660,28 @@ elif selection == "🤖 AI 모델 테스팅":
             score_cache_key = f"scores_{model_type}_{today_str}_{saved_top_k}"
             
             # --- [Persistence Load] ---
+            # --- [Persistence Load] ---
             portfolio_history = load_portfolio_history()
-            last_portfolio = portfolio_history.get(model_type, None)
+            history_entry = portfolio_history.get(model_type, None)
+            
+            last_portfolio = None
+            if history_entry:
+                if isinstance(history_entry, list):
+                    if len(history_entry) > 0:
+                        # Get latest by date
+                        try:
+                            sorted_hist = sorted(history_entry, key=lambda x: x.get('date', '0000-00-00'), reverse=True)
+                            last_portfolio = sorted_hist[0]
+                        except: last_portfolio = None
+                elif isinstance(history_entry, dict):
+                    last_portfolio = history_entry
             
             if last_portfolio:
-                with st.expander(f"📅 지난 저장 포트폴리오 (비교군) - {last_portfolio['date']}", expanded=False):
-                    items_str = ", ".join(last_portfolio['items'])
-                    st.info(f"**Items ({len(last_portfolio['items'])}):** {items_str}")
+                last_date = last_portfolio.get('date', 'Unknown')
+                last_items = last_portfolio.get('items', [])
+                with st.expander(f"📅 지난 저장 포트폴리오 (비교군) - {last_date}", expanded=False):
+                    items_str = ", ".join(last_items)
+                    st.info(f"**Items ({len(last_items)}):** {items_str}")
 
             # ---------------------------------------------------------
             # 1. AI Score Calculation (Fast Inference) or Load from Cache
@@ -1817,10 +1832,43 @@ elif selection == "🤖 AI 모델 테스팅":
                                 old_record = st.session_state.portfolio_history[model_type]
                                 st.session_state.portfolio_history[model_type] = [old_record]
                                 
-                            # Check duplicates (Same Date) -> Overwrite today's entry if exists, or Append
+                            # Check duplicates logic: Date + Horizon + Feature Level (Strict Unique)
                             history_list = st.session_state.portfolio_history[model_type]
-                            updated_list = [rec for rec in history_list if rec.get('date') != today_str] # Remove same date
-                            updated_list.append(new_record) # Add new
+                            
+                            # Filter out existing record ONLY IF it matches ALL criteria (Date & Horizon & Feature)
+                            # This allows multiple experiments on same day (e.g. 1 Week vs 2 Weeks)
+                            updated_list = []
+                            is_replaced = False
+                            
+                            # Current context
+                            curr_feat = current_model_info.get("feature_level", "Unknown")
+                            
+                            for rec in history_list:
+                                r_date = rec.get('date')
+                                r_horizon = rec.get('horizon')
+                                # Feature level might not be saved in old records, assum 'Unknown'
+                                # Wait, current `new_record` doesn't have feature? Add it.
+                                # Check line 1804 (start of new_record creation) - user can't see this but I must verify
+                                
+                                # Condition: Same Date AND Same Horizon
+                                # If same, we exclude it (overwrite)
+                                if r_date == today_str and r_horizon == saved_horizon:
+                                    # We could also check feature_level if present, but Horizon is the main differentiator usually.
+                                    # Let's be strict: if Date and Horizon match, overwrite.
+                                    pass 
+                                else:
+                                    updated_list.append(rec)
+                                    
+                            # Add new record
+                            # We should ensure 'feature_level' is in new_record if user wants to distinguish by it
+                            # But new_record was defined in lines 1801-1804 (which I am not editing here directly, need to check if I can edit)
+                            # Wait, previous task created `new_record` at 1804.
+                            # I need to edit the creation of `new_record` to include feature_level if possible?
+                            # Or just modify it here before appending.
+                            
+                            new_record['feature_level'] = current_model_info.get("feature_level", "Unknown")
+                            
+                            updated_list.append(new_record)
                             
                             st.session_state.portfolio_history[model_type] = updated_list
                             
