@@ -1821,7 +1821,10 @@ elif selection == "🤖 AI 모델 테스팅":
                                 "date": today_str,
                                 "items": new_items,
                                 "horizon": saved_horizon,
-                                "weights": {x['Ticker']: x['Weight'] for x in top_k_items}
+                                "weights": {x['Ticker']: x['Weight'] for x in top_k_items},
+                                "train_period": current_model_info.get("train_period", "Unknown"),
+                                "feature_level": current_model_info.get("feature_level", "Unknown"),
+                                "top_k": saved_top_k
                             }
                             
                             if model_type not in st.session_state.portfolio_history:
@@ -1974,10 +1977,13 @@ elif selection == "🤖 AI 모델 테스팅":
                         for rec in records:
                             r_date = rec.get('date', 'Unknown')
                             r_horizon = rec.get('horizon', 'Unknown')
+                            r_train = rec.get('train_period', '-')
+                            r_feat = rec.get('feature_level', '-')
                             r_items = rec.get('items', [])
                             r_weights = rec.get('weights', {})
                             
-                            st.markdown(f"**📅 {r_date}** (Horizon: {r_horizon})")
+                            st.markdown(f"**📅 {r_date}**")
+                            st.caption(f"Horizon: {r_horizon} | Train: {r_train} | Features: {r_feat}")
                             
                             # Table Display
                             if r_weights:
