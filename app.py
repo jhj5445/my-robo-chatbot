@@ -1946,10 +1946,20 @@ elif selection == "🤖 AI 모델 테스팅":
                      help="GitHub에 커밋하여 이력을 보존하세요."
                  )
             
-            if st.session_state.portfolio_history:
-                st.write(f"총 {len(st.session_state.portfolio_history)}개의 모델 포트폴리오가 저장되어 있습니다.")
+            # [Reload Button] - Essential for manual file updates
+            if st.button("🔄 파일에서 새로고침 (수동 업데이트 반영)"):
+                st.session_state.portfolio_history = load_portfolio_history()
+                st.rerun()
+            
+            # Sync Display with Session State (or prefer File?)
+            # Actually, let's use session state as primary source of truth for app
+            current_hist = st.session_state.portfolio_history
+            
+            
+            if current_hist:
+                st.write(f"총 {len(current_hist)}개의 모델 포트폴리오가 저장되어 있습니다.")
                 
-                for m_name, history_data in st.session_state.portfolio_history.items():
+                for m_name, history_data in current_hist.items():
                     # Handle both Dict (Old) and List (New)
                     records = []
                     if isinstance(history_data, list):
