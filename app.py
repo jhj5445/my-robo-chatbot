@@ -1409,7 +1409,8 @@ elif selection == "🤖 AI 모델 테스팅":
                 "top_k": top_k_select,
                 "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "valid_tickers": valid_tickers,
-                "backtest_data": backtest_data_to_save # Save Performance
+                "backtest_data": backtest_data_to_save, # Save Performance
+                "train_period": f"{train_start_date.strftime('%Y-%m-%d')} ~ {backtest_start_date.strftime('%Y-%m-%d')}"
             }
             
             # Update Session State too
@@ -1427,7 +1428,10 @@ elif selection == "🤖 AI 모델 테스팅":
             safe_feat = feature_level.split(" ")[0] # Light, Standard, Rich
             today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
             
-            file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{today_str}"
+            # [Added] Training Period in Filename (Year Only)
+            period_str = f"{train_start_date.year}-{backtest_start_date.year}"
+            
+            file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{period_str}_{today_str}"
             
             save_model_checkpoint(file_name_ver, model_data_to_save)
             st.toast(f"✅ 모델 자동 저장 완료: {file_name_ver}")
@@ -1494,8 +1498,25 @@ elif selection == "🤖 AI 모델 테스팅":
         
         if st.button("⚡ 선택된 모델로 바로 분석 (Fast Inference)"):
             # Inject Backtest Data for Analysis Tab
+            # Inject Backtest Data for Analysis Tab
             if 'backtest_data' in loaded_model_data:
                  st.session_state.trained_models[model_type] = loaded_model_data
+                 
+                 # [Fix] Render Saved Backtest Results Immediately
+                 bd = loaded_model_data['backtest_data']
+                 if bd and 'perf_df' in bd and not bd['perf_df'].empty:
+                     metrics = bd.get('metrics', {})
+                     res_df = bd['perf_df']
+                     
+                     st.markdown("### 📊 불러온 모델의 백테스트 결과")
+                     c1, c2, c3 = st.columns(3)
+                     c1.metric("AI 포트폴리오 수익률", metrics.get("Total Return", "N/A"))
+                     c2.metric("S&P 500 수익률", metrics.get("SPY Return", "N/A"))
+                     c3.metric("동일 비중 (Equal)", metrics.get("EQ Return", "N/A"))
+                     
+                     st.line_chart(res_df)
+                 else:
+                     st.warning("⚠️ 저장된 백테스트 데이터가 없습니다.")
             
             status_text = st.empty()
             progress_bar = st.progress(0)
