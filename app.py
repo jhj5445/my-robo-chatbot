@@ -175,7 +175,11 @@ def calculate_feature_set(df, feature_level):
 # -----------------------------------------------------------------------------
 # Portfolio & Universe Helpers (Moved to Top for Scope Safety)
 # -----------------------------------------------------------------------------
-PORTFOLIO_HISTORY_FILE = "ai_portfolio_history.json"
+PORT_SAVE_DIR = "saved_portfolios"
+if not os.path.exists(PORT_SAVE_DIR):
+    os.makedirs(PORT_SAVE_DIR)
+
+PORTFOLIO_HISTORY_FILE = os.path.join(PORT_SAVE_DIR, "ai_portfolio_history.json")
 
 def load_portfolio_history():
     if os.path.exists(PORTFOLIO_HISTORY_FILE):
@@ -1517,7 +1521,26 @@ elif selection == "🤖 AI 모델 테스팅":
                      st.line_chart(res_df)
                  else:
                      st.warning("⚠️ 저장된 백테스트 데이터가 없습니다.")
-            
+                 
+                 # [Supported Request] Display Model Characteristics
+                 st.info("ℹ️ 모델 상세 스펙 (Model Specifications)")
+                 
+                 spec_col1, spec_col2 = st.columns(2)
+                 with spec_col1:
+                     st.write(f"**🔹 모델 타입**: {loaded_model_data.get('model_type')}")
+                     st.write(f"**🔹 예측 기간 (Horizon)**: {loaded_model_data.get('horizon')}")
+                     st.write(f"**🔹 학습 기간**: {loaded_model_data.get('train_period', 'Unknown (Old Version)')}")
+                 
+                 with spec_col2:
+                     feat_lvl = loaded_model_data.get('feature_level', 'Unknown')
+                     feat_cnt = len(loaded_model_data.get('feature_cols', []))
+                     st.write(f"**🔹 Feature 복잡도**: {feat_lvl} ({feat_cnt} features)")
+                     
+                     univ_size = len(loaded_model_data.get('valid_tickers', []))
+                     st.write(f"**🔹 학습 유니버스 크기**: {univ_size}개 종목")
+                     st.write(f"**🔹 저장 일시**: {saved_ts}")
+                 st.divider()
+
             status_text = st.empty()
             progress_bar = st.progress(0)
             status_text.text("최신 데이터 다운로드 중 (Fast Mode - Last 200 Days)...")
@@ -1778,13 +1801,28 @@ elif selection == "🤖 AI 모델 테스팅":
                             if 'portfolio_history' not in st.session_state:
                                 st.session_state.portfolio_history = load_portfolio_history()
                             
-                            # Update Dict
-                            st.session_state.portfolio_history[model_type] = {
+                            # Update Dict (Append to History List)
+                            new_record = {
                                 "date": today_str,
                                 "items": new_items,
                                 "horizon": saved_horizon,
                                 "weights": {x['Ticker']: x['Weight'] for x in top_k_items}
                             }
+                            
+                            if model_type not in st.session_state.portfolio_history:
+                                st.session_state.portfolio_history[model_type] = []
+                            
+                            # Migration Check: If existing value is Dict (Old Format), convert to List
+                            if isinstance(st.session_state.portfolio_history[model_type], dict):
+                                old_record = st.session_state.portfolio_history[model_type]
+                                st.session_state.portfolio_history[model_type] = [old_record]
+                                
+                            # Check duplicates (Same Date) -> Overwrite today's entry if exists, or Append
+                            history_list = st.session_state.portfolio_history[model_type]
+                            updated_list = [rec for rec in history_list if rec.get('date') != today_str] # Remove same date
+                            updated_list.append(new_record) # Add new
+                            
+                            st.session_state.portfolio_history[model_type] = updated_list
                             
                             # Save to File
                             save_portfolio_history(st.session_state.portfolio_history)
@@ -1860,16 +1898,37 @@ elif selection == "🤖 AI 모델 테스팅":
                      help="GitHub에 커밋하여 이력을 보존하세요."
                  )
             
-            if hist_data:
-                st.success(f"총 {len(hist_data)}개의 포트폴리오가 로드되었습니다.")
-                for m_name, info in hist_data.items():
-                    with st.expander(f"{m_name} ({info['date']})", expanded=True):
-                        st.write(f"**Items:** {', '.join(info['items'])}")
-                        st.caption(f"Horizon: {info['horizon']}")
-                        # Show weights table
-                        if 'weights' in info:
-                            w_df = pd.DataFrame(list(info['weights'].items()), columns=['Ticker', 'Weight'])
-                            st.dataframe(w_df, use_container_width=True, height=150)
+            if st.session_state.portfolio_history:
+                st.write(f"총 {len(st.session_state.portfolio_history)}개의 모델 포트폴리오가 저장되어 있습니다.")
+                
+                for m_name, history_data in st.session_state.portfolio_history.items():
+                    # Handle both Dict (Old) and List (New)
+                    records = []
+                    if isinstance(history_data, list):
+                        records = history_data
+                    else:
+                        records = [history_data]
+                        
+                    # Sort records by date descending
+                    records.sort(key=lambda x: x.get('date', '0000-00-00'), reverse=True)
+                    
+                    with st.expander(f"📁 {m_name} ({len(records)} records)"):
+                        for rec in records:
+                            r_date = rec.get('date', 'Unknown')
+                            r_horizon = rec.get('horizon', 'Unknown')
+                            r_items = rec.get('items', [])
+                            r_weights = rec.get('weights', {})
+                            
+                            st.markdown(f"**📅 {r_date}** (Horizon: {r_horizon})")
+                            
+                            # Table Display
+                            if r_weights:
+                                w_df = pd.DataFrame(list(r_weights.items()), columns=["Ticker", "Weight (%)"])
+                                w_df['Weight (%)'] = w_df['Weight (%)'].apply(lambda x: f"{x:.2f}")
+                                st.dataframe(w_df, use_container_width=True, hide_index=True)
+                            else:
+                                st.write(f"종목: {', '.join(r_items)}")
+                            st.markdown("---")
             else:
                 st.info("아직 저장된 포트폴리오가 없습니다. (데이터가 비어있음)")
 
