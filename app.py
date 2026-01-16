@@ -1458,7 +1458,12 @@ elif selection == "🤖 AI 모델 테스팅":
     # '2. 실행 (학습 버튼)' 아래에 조건을 두거나 병렬로 둠.
     
     # Scan for existing saved models matching current selection
-    safe_type = model_type.replace(" ", "").replace("(", "").replace(")", "").replace("+", "")
+    # [Fix] Use same sanitization logic as Saving to match filenames
+    def sanitize_filename_search(s):
+        s = re.sub(r'[^\w\s-]', '', s)
+        return s.replace(" ", "")
+
+    safe_type = sanitize_filename_search(model_type)
     search_pattern = os.path.join(MODEL_SAVE_DIR, f"*{safe_type}*.pkl")
     found_files = glob.glob(search_pattern)
     
