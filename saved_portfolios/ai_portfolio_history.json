@@ -1,0 +1,30 @@
+{
+    "⭐ 앙상블 (Ensemble: Linear+SVM+LGBM)": {
+        "date": "2026-01-15",
+        "items": [
+            "DAY",
+            "FISV",
+            "EA",
+            "LCID",
+            "ARE",
+            "COIN",
+            "TTD",
+            "SMCI",
+            "HOOD",
+            "LW"
+        ],
+        "horizon": "2 Weeks (스윙 트레이딩)",
+        "weights": {
+            "FISV": 17,
+            "DAY": 17.5,
+            "EA": 16.4,
+            "LCID": 9.3,
+            "ARE": 8,
+            "COIN": 5.8,
+            "TTD": 5.7,
+            "SMCI": 7,
+            "HOOD": 6.4,
+            "LW": 6.9
+        }
+    }
+}
