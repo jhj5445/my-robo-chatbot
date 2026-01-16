@@ -1420,7 +1420,7 @@ elif selection == "🤖 AI 모델 테스팅":
                 "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "valid_tickers": valid_tickers,
                 "backtest_data": backtest_data_to_save, # Save Performance
-                "train_period": f"{start_date.strftime('%Y-%m-%d')} ~ {pd.to_datetime(test_start).strftime('%Y-%m-%d')}"
+                "train_period": f"{train_start.strftime('%Y-%m-%d')} ~ {pd.to_datetime(test_start).strftime('%Y-%m-%d')}"
             }
             
             # Update Session State too
