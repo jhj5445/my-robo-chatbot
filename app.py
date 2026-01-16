@@ -55,7 +55,13 @@ from sklearn.metrics import mean_squared_error
 # -----------------------------------------------------------------------------
 # Helper Functions (Moved to Top for Scope Safety)
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 import pickle
+try:
+    import stats_helper # Custom Helper
+except ImportError:
+    pass # fallback or handle if missing
+
 
 MODEL_SAVE_DIR = "saved_models"
 if not os.path.exists(MODEL_SAVE_DIR):
@@ -1985,7 +1991,6 @@ elif selection == "🤖 AI 모델 테스팅":
                             st.markdown(f"**📅 {r_date}**")
                             st.caption(f"Horizon: {r_horizon} | Train: {r_train} | Features: {r_feat}")
                             
-                            # Table Display
                             if r_weights:
                                 w_df = pd.DataFrame(list(r_weights.items()), columns=["Ticker", "Weight (%)"])
                                 w_df['Weight (%)'] = w_df['Weight (%)'].apply(lambda x: f"{x:.2f}")
@@ -1993,6 +1998,98 @@ elif selection == "🤖 AI 모델 테스팅":
                             else:
                                 st.write(f"종목: {', '.join(r_items)}")
                             st.markdown("---")
+                            
+                # [Live Performance Monitor]
+                st.divider()
+                st.subheader("📊 실전 누적 수익률 (Paper Trading Monitor)")
+                st.caption("저장된 포트폴리오를 날짜별로 이어 붙여서, 실제 시장에서의 누적 성과를 추적합니다.")
+                
+                track_opts = list(st.session_state.portfolio_history.keys())
+                track_sel = st.selectbox("추적할 전략 선택", track_opts)
+                
+                if track_sel and st.button("📈 실전 성과 분석 시작 (Live Track)"):
+                    hist_for_track = st.session_state.portfolio_history[track_sel]
+                    
+                    if isinstance(hist_for_track, list) and len(hist_for_track) > 0:
+                        with st.spinner("데이터 다운로드 및 수익률 계산 중... (시간이 조금 걸릴 수 있습니다)"):
+                            try:
+                                # Safe Import Check
+                                import stats_helper
+                                import importlib
+                                importlib.reload(stats_helper) # Reload for dev
+                                
+                                res_df, err = stats_helper.calculate_portfolio_performance_from_history(hist_for_track)
+                                
+                                if err:
+                                    st.error(f"분석 실패: {err}")
+                                else:
+                                    # Plot
+                                    st.success(f"분석 완료! (기간: {res_df.index[0].date()} ~ {res_df.index[-1].date()})")
+                                    
+                                    # Benchmark (SPY) for Comparison
+                                    # We plot SPY from the earliest date (overall market context)
+                                    try:
+                                        spy_live = yf.download("SPY", start=res_df.index[0], end=res_df.index[-1] + pd.Timedelta(days=1), progress=False)
+                                        if isinstance(spy_live.columns, pd.MultiIndex): spy_live.columns = spy_live.columns.get_level_values(0)
+                                        spy_col = 'Adj Close' if 'Adj Close' in spy_live.columns else 'Close'
+                                        spy_series = spy_live[spy_col]
+                                        # Rebase to 1.0 (start of period)
+                                        spy_series = spy_series / spy_series.iloc[0]
+                                        res_df['S&P 500 (Base)'] = spy_series
+                                    except: 
+                                        spy_series = None
+                                    
+                                    # Plot (Multiple Lines)
+                                    st.line_chart(res_df)
+                                    
+                                    # Detailed Cohort Metrics Table
+                                    st.subheader("📋 포트폴리오별 상세 성과 (Cohort Analysis)")
+                                    
+                                    cohort_metrics = []
+                                    for col in res_df.columns:
+                                        if col == 'S&P 500 (Base)': continue
+                                        
+                                        # Calculate Return for this specific cohort
+                                        # Find first non-NaN index
+                                        valid_idx = res_df[col].first_valid_index()
+                                        if valid_idx is None: continue
+                                        
+                                        start_val = res_df.loc[valid_idx, col]
+                                        curr_val = res_df[col].iloc[-1]
+                                        
+                                        # CAGR or Absolute Return? Absolute is safer for short term.
+                                        abs_ret = (curr_val / start_val) - 1
+                                        days_held = (res_df.index[-1] - valid_idx).days
+                                        
+                                        # Calculate SPY return for SAME period
+                                        spy_ret = 0.0
+                                        if spy_series is not None:
+                                            try:
+                                                s_start = spy_series.loc[valid_idx]
+                                                s_curr = spy_series.iloc[-1]
+                                                spy_ret = (s_curr / s_start) - 1
+                                            except: pass
+                                        
+                                        # Extract Date from col name "Port_YYYY-MM-DD"
+                                        p_date = col.replace("Port_", "")
+                                        
+                                        cohort_metrics.append({
+                                            "시작일 (Start)": p_date,
+                                            "경과일수": f"{days_held}일",
+                                            "포트폴리오 수익률": f"{abs_ret:.2%}",
+                                            "S&P 500 수익률": f"{spy_ret:.2%}",
+                                            "알파 (Alpha)": f"{abs_ret - spy_ret:.2%}"
+                                        })
+                                    
+                                    if cohort_metrics:
+                                        st.dataframe(pd.DataFrame(cohort_metrics), use_container_width=True, hide_index=True)
+                                        
+                                    st.caption("※ 각 포트폴리오는 생성일로부터 독립적으로 수익률이 계산됩니다.")
+                                    
+                            except Exception as e:
+                                st.error(f"실행 오류: {e}")
+                    else:
+                        st.warning("분석할 기록이 부족합니다.")
             else:
                 st.info("아직 저장된 포트폴리오가 없습니다. (데이터가 비어있음)")
 
