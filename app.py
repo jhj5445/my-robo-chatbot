@@ -2413,3 +2413,147 @@ def page_robo_advisor():
 
 if selection == "🤖 로보 어드바이저 (Demo)":
     page_robo_advisor()
+
+if selection == "🧪 Qlib 실험실 (Pro)":
+    st.title("🧪 Qlib 실험실 (Pro)")
+    st.caption("Microsoft Qlib 스타일의 전문적인 퀀트 연구 워크플로우를 제공합니다. Factor IC 분석을 통해 알파를 검증하세요.")
+    
+    # 1. 사이드바 설정 (Dataset & Model)
+    with st.sidebar:
+        st.header("🔬 실험 설정 (Experiment Config)")
+        
+        # Universe Reuse
+        universe_preset = st.selectbox(
+            "유니버스 선택", 
+            ["NASDAQ Top 10 (Demo)", "Tech Giants (M7)", "NASDAQ Top 30", "직접 입력"]
+        )
+        
+        if universe_preset == "직접 입력":
+            tickers_input = st.text_input("종목 코드 (쉼표 구분)", "AAPL, MSFT, GOOGL")
+            tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+        elif universe_preset == "Tech Giants (M7)":
+            tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
+        elif universe_preset == "NASDAQ Top 10 (Demo)":
+            tickers = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "COST", "PEP"]
+        else: # NASDAQ Top 30
+            # Sample subset
+            tickers = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "COST", "PEP", "CSCO", "NFLX", "AMD"]
+
+        st.divider()
+        start_date = st.date_input("데이터 시작일", pd.to_datetime("2020-01-01"))
+        split_date = st.date_input("학습/테스트 분할일", pd.to_datetime("2023-01-01"))
+        
+        st.divider()
+        st.subheader("🤖 모델 설정 (LightGBM)")
+        lgbm_leaves = st.slider("Num Leaves", 10, 100, 31)
+        lgbm_lr = st.select_slider("Learning Rate", options=[0.01, 0.05, 0.1], value=0.05)
+        
+    # 2. Main Workspace
+    st.info("💡 **Qlib Workflow**: Data Loader -> Alpha Factory (Feature Eng.) -> Label Gen -> LightGBM -> IC Analysis")
+    
+    if st.button("🚀 실험 시작 (Run Experiment)"):
+        import qlib_workflow
+        import importlib
+        importlib.reload(qlib_workflow) # Reload for dev
+        from qlib_workflow import QlibWorkflow
+        
+        # 2.1 Data Loading (Inline OR Lambda)
+        def my_loader(tickers, start, end):
+            # Wrapper around yf.download
+            # Note: We need a buffer for features (e.g. 60 days)
+            actual_start = pd.to_datetime(start) - pd.Timedelta(days=100)
+            with st.spinner(f"데이터 다운로드 중... ({len(tickers)} 종목)"):
+                try:
+                    df = yf.download(tickers, start=actual_start, end=end, group_by='ticker', progress=False)
+                    # Convert MultiIndex Columns to Dict of DFs
+                    res = {}
+                    if len(tickers) == 1:
+                        res[tickers[0]] = df
+                    else:
+                        for t in tickers:
+                            try:
+                                res[t] = df[t].dropna()
+                            except: pass
+                    return res
+                except Exception as e:
+                    st.error(f"Download Error: {e}")
+                    return {}
+
+        qc = QlibWorkflow(my_loader)
+        
+        # 2.2 Orchestration
+        with st.status("🔬 퀀트 파이프라인 가동 중...", expanded=True) as status:
+            st.write("1️⃣ 데이터 준비 및 알파 생성 중...")
+            dataset, err = qc.prepare_data(tickers, start_date, pd.to_datetime("today"))
+            
+            if err or dataset is None:
+                st.error(f"데이터 준비 실패: {err}")
+                st.stop()
+                
+            st.success(f"데이터 준비 완료! (Shape: {dataset.shape})")
+            st.write(f"📊 생성된 팩터(Features): {len(dataset.columns)-1}개")
+            st.dataframe(dataset.head(5))
+            
+            # Split
+            st.write("2️⃣ 학습/테스트 데이터 분할 중...")
+            dates = dataset.index.get_level_values('Date')
+            train_mask = dates < pd.to_datetime(split_date)
+            test_mask = dates >= pd.to_datetime(split_date)
+            
+            train_df = dataset[train_mask]
+            test_df = dataset[test_mask]
+            
+            # Feature Cols (All except Ref($close, -1))
+            label_col = [c for c in dataset.columns if "Ref" in c][0]
+            feature_cols = [c for c in dataset.columns if c != label_col]
+            
+            st.write(f"Train: {len(train_df)} rows, Test: {len(test_df)} rows")
+            
+            st.write("3️⃣ LightGBM 모델 학습 중...")
+            model = qc.train_model(train_df, test_df, feature_cols, label_col) 
+            st.success("모델 학습 완료!")
+            
+            st.write("4️⃣ 성과 분석 (IC Analysis) 중...")
+            metrics, daily_ic, daily_rank_ic, res_df = qc.analyze_performance(model, test_df, feature_cols, label_col)
+            
+            status.update(label="✅ 실험 완료!", state="complete", expanded=False)
+            
+        # 3. Report
+        st.divider()
+        st.header("📊 실험 결과 리포트 (Experiment Report)")
+        
+        # Metrics Cards
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("IC (Mean)", f"{metrics['IC_Mean']:.4f}")
+        c2.metric("ICIR", f"{metrics['ICIR']:.4f}")
+        c3.metric("Rank IC (Mean)", f"{metrics['Rank_IC_Mean']:.4f}")
+        c4.metric("Rank ICIR", f"{metrics['Rank_ICIR']:.4f}")
+        
+        st.caption("""
+        * **IC (Information Coefficient)**: 예측과 실제 수익률의 상관계수. (0.05 이상임 훌륭)
+        * **ICIR**: IC의 안정성 (Mean / Std). 높을수록 꾸준한 예측력.
+        """)
+        
+        # Charts
+        tab1, tab2, tab3 = st.tabs(["📉 누적 IC (Cumulative IC)", "🔍 Feature Importance", "📈 예측 vs 실제"])
+        
+        with tab1:
+            st.subheader("일별 Rank IC 추이")
+            cum_rank_ic = daily_rank_ic.cumsum()
+            st.line_chart(cum_rank_ic)
+            st.caption("우상향할수록 모델이 꾸준히 시장을 맞추고 있음을 의미합니다.")
+            
+        with tab2:
+            st.subheader("주요 팩터 중요도 (Top 10)")
+            imp = pd.DataFrame({
+                "Feature": feature_cols,
+                "Importance": model.feature_importances_
+            }).sort_values(by="Importance", ascending=False).head(10)
+            
+            import plotly.express as px
+            fig = px.bar(imp, x='Importance', y='Feature', orientation='h', title="Feature Importance")
+            st.plotly_chart(fig)
+            
+        with tab3:
+            st.subheader("테스트 기간 예측 분포")
+            st.scatter_chart(res_df.reset_index(), x='Pred', y=label_col, color='#00CC96')
