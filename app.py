@@ -2444,9 +2444,27 @@ if selection == "🧪 Qlib 실험실 (Pro)":
         split_date = st.date_input("학습/테스트 분할일", pd.to_datetime("2023-01-01"))
         
         st.divider()
-        st.subheader("🤖 모델 설정 (LightGBM)")
-        lgbm_leaves = st.slider("Num Leaves", 10, 100, 31)
-        lgbm_lr = st.select_slider("Learning Rate", options=[0.01, 0.05, 0.1], value=0.05)
+        st.subheader("⚙️ 모델 & 팩터 설정 (Pro)")
+        
+        # Factor Groups (Mock for now, will filter later if needed)
+        factor_groups = st.multiselect(
+            "활성화할 팩터 그룹",
+            ["Price Momentum (ROC, KMID)", "Volatility (Std, ATR)", "Volume (VMA)"],
+            default=["Price Momentum (ROC, KMID)", "Volatility (Std, ATR)", "Volume (VMA)"]
+        )
+        
+        st.caption("LightGBM 하이퍼파라미터")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            lgbm_leaves = st.slider("Num Leaves", 10, 255, 31)
+            lgbm_depth = st.slider("Max Depth", -1, 20, -1)
+        with col_p2:
+            lgbm_lr = st.select_slider("Learning Rate", options=[0.001, 0.005, 0.01, 0.05, 0.1], value=0.05)
+            lgbm_min_data = st.slider("Min Data Leaf", 10, 100, 20)
+            
+        with st.expander("고급 설정 (Advanced)"):
+            lgbm_feature_frac = st.slider("Feature Fraction", 0.5, 1.0, 0.8, help="트리 생성 시 무작위로 선택할 Feature 비율")
+            lgbm_bagging_frac = st.slider("Bagging Fraction", 0.5, 1.0, 0.8, help="데이터 샘플링 비율")
         
     # 2. Main Workspace
     st.info("💡 **Qlib Workflow**: Data Loader -> Alpha Factory (Feature Eng.) -> Label Gen -> LightGBM -> IC Analysis")
@@ -2510,7 +2528,19 @@ if selection == "🧪 Qlib 실험실 (Pro)":
             st.write(f"Train: {len(train_df)} rows, Test: {len(test_df)} rows")
             
             st.write("3️⃣ LightGBM 모델 학습 중...")
-            model = qc.train_model(train_df, test_df, feature_cols, label_col) 
+            
+            # Pass Params
+            lgbm_params = {
+                'num_leaves': lgbm_leaves,
+                'learning_rate': lgbm_lr,
+                'max_depth': lgbm_depth,
+                'min_child_samples': lgbm_min_data,
+                'colsample_bytree': lgbm_feature_frac,
+                'subsample': lgbm_bagging_frac,
+                'n_estimators': 300
+            }
+            
+            model = qc.train_model(train_df, test_df, feature_cols, label_col, **lgbm_params) 
             st.success("모델 학습 완료!")
             
             st.write("4️⃣ 성과 분석 (IC Analysis) 중...")
