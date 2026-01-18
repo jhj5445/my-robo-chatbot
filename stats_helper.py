@@ -1,3 +1,5 @@
+import pandas as pd
+import yfinance as yf
 
 def calculate_portfolio_performance_from_history(records):
     """
@@ -119,3 +121,4 @@ def calculate_portfolio_performance_from_history(records):
     # Actually explicit start_date_min handling is better.
     
     return combined_df[cohort_cols], None
+
