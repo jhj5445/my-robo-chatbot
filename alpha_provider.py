@@ -92,10 +92,13 @@ class AlphaFactory:
         alphas['KMID2'] = (C - O) / (H - L + 1e-8)
         
         # 4. KUP: (High - Max(Open, Close)) / Open
-        alphas['KUP'] = (H - pd.concat([O, C], axis=1).max(axis=1)) / O
+        # Use numpy maximum for safety and speed
+        max_oc = np.maximum(O, C)
+        alphas['KUP'] = (H - max_oc) / O
         
         # 5. KLOW: (Min(Open, Close) - Low) / Open
-        alphas['KLOW'] = (pd.concat([O, C], axis=1).min(axis=1) - L) / O
+        min_oc = np.minimum(O, C)
+        alphas['KLOW'] = (min_oc - L) / O
         
         # 6. KSFT (K-Shift): (2*Close - High - Low) / Open
         alphas['KSFT'] = (2 * C - H - L) / O
