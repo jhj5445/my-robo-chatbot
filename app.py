@@ -1606,18 +1606,21 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # Prepare Session State for Results (Mocking the 'trained_models' state for the result viewer)
             # But wait, result viewer expects full_data, etc. 
-                            if "매수" in pat or "반등" in pat or "Golden" in pat:
-                                st.success(pat)
-                            elif "매도" in pat or "주의" in pat or "Death" in pat:
-                                st.error(pat)
-                            else:
-                                st.info(pat)
-                        # 상세 정보 (RSI 값 등)
-                        if item.get('Details'):
-                            st.caption(", ".join(item['Details']))
-                    st.divider()
-        else:
-            st.warning("선택한 필터에 맞는 결과가 없습니다.")
+            # We should populate session_state exactly as if we trained.
+            
+            st.session_state.trained_models[model_type] = {
+                "model": model,
+                "scaler": scaler,
+                "feature_cols": feature_cols,
+                "full_data": fast_data, # Only recent data
+                "valid_tickers": fast_valid_tickers,
+                "top_k": top_k_select, # Allow changing top_k for inference
+                "feature_level": loaded_model_data['feature_level'],
+                "horizon": horizon_option
+            }
+            
+            st.success(f"⚡ 빠른 분석 완료! 하단 '오늘의 추천 PICK'에서 결과를 확인하세요.")
+            status_text.empty()
 
     elif 'scan_results' in st.session_state and not st.session_state.scan_results:
          st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
