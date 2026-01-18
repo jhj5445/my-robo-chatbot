@@ -46,21 +46,34 @@ class QlibWorkflow:
             return None, "Empty dataframes."
             
         full_df = pd.concat(frames)
-        # Reset Index (Date is usually index) to make it a column for MultiIndex set
-        # Reset Index (Date is usually index) to make it a column for MultiIndex set
-        full_df = full_df.reset_index()
-        # Rename 'Date' col if needed (yfinance index name is 'Date')
         
-        # Ensure 'Date' exists
-        if 'Date' not in full_df.columns:
-            # Try to find a date-like column or infer it if index was date
-            pass 
+        # Normalize Index Name
+        full_df.index.name = 'Date'
+        
+        # Reset Index to column
+        full_df = full_df.reset_index()
+        
+        # Normalize Date Column (Remove Time zone/Time)
+        if 'Date' in full_df.columns:
+            full_df['Date'] = pd.to_datetime(full_df['Date']).dt.normalize()
             
-        # Deduplicate (Critical Step)
-        full_df = full_df.drop_duplicates(subset=['Date', 'Ticker'], keep='last')
+        # Deduplicate (Strict)
+        # Sort to keep latest
+        if 'Date' in full_df.columns and 'Ticker' in full_df.columns:
+            full_df = full_df.sort_values(['Date', 'Ticker'])
+            full_df = full_df.drop_duplicates(subset=['Date', 'Ticker'], keep='last')
+        else:
+            return None, "Columns 'Date' and 'Ticker' required after processing."
         
         # Set MultiIndex [Date, Ticker]
         full_df = full_df.set_index(['Date', 'Ticker']).sort_index()
+        
+        # Verify Uniqueness
+        if not full_df.index.is_unique:
+             # Force deduplication on index
+             full_df = full_df[~full_df.index.duplicated(keep='last')]
+        
+        # 2. Generate Alphas
         
         # 2. Generate Alphas
         try:
