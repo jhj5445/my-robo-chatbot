@@ -1962,6 +1962,9 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # Sync Display with Session State (or prefer File?)
             # Actually, let's use session state as primary source of truth for app
+            if 'portfolio_history' not in st.session_state:
+                st.session_state.portfolio_history = load_portfolio_history()
+                
             current_hist = st.session_state.portfolio_history
             
             
