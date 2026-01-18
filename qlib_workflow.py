@@ -47,8 +47,17 @@ class QlibWorkflow:
             
         full_df = pd.concat(frames)
         # Reset Index (Date is usually index) to make it a column for MultiIndex set
+        # Reset Index (Date is usually index) to make it a column for MultiIndex set
         full_df = full_df.reset_index()
         # Rename 'Date' col if needed (yfinance index name is 'Date')
+        
+        # Ensure 'Date' exists
+        if 'Date' not in full_df.columns:
+            # Try to find a date-like column or infer it if index was date
+            pass 
+            
+        # Deduplicate (Critical Step)
+        full_df = full_df.drop_duplicates(subset=['Date', 'Ticker'], keep='last')
         
         # Set MultiIndex [Date, Ticker]
         full_df = full_df.set_index(['Date', 'Ticker']).sort_index()
@@ -70,7 +79,7 @@ class QlibWorkflow:
         
         return dataset, None
 
-    def train_model(self, train_df, val_df, feature_cols, label_col='Ref($close, -1)'):
+    def train_model(self, train_df, val_df, feature_cols, label_col='Ref($close, -1)', **kwargs):
         """
         Train LightGBM Ranking/Regression Model
         """
@@ -80,22 +89,26 @@ class QlibWorkflow:
         X_val = val_df[feature_cols]
         y_val = val_df[label_col]
         
+        # Default Params
+        params = {
+            'n_estimators': 300,
+            'learning_rate': 0.05,
+            'num_leaves': 31,
+            'random_state': 42,
+            'n_jobs': -1
+        }
+        # Update with kwargs
+        params.update(kwargs)
+        
         # LGBM Regressor (Predicting Return)
-        # For 'Ranking', we ideally use lambdarank, but regression on return is standard for Qlib 'MSE' loss.
-        model = lgb.LGBMRegressor(
-            n_estimators=150,
-            learning_rate=0.05,
-            num_leaves=31,
-            random_state=42,
-            n_jobs=-1
-        )
+        model = lgb.LGBMRegressor(**params)
         
         model.fit(
             X_train, y_train,
             eval_set=[(X_val, y_val)],
             eval_metric='mse',
             callbacks=[
-                lgb.early_stopping(stopping_rounds=20, verbose=False)
+                lgb.early_stopping(stopping_rounds=30, verbose=False)
             ]
         )
         
