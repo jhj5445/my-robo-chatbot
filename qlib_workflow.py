@@ -47,31 +47,61 @@ class QlibWorkflow:
             
         full_df = pd.concat(frames)
         
-        # Normalize Index Name
-        full_df.index.name = 'Date'
+        # 1. Handle Index/Columns
+        # If 'Date' is in index, move it to column
+        # Handle case where 'Date' might also be a column already (duplicate)
+        full_df = full_df.reset_index(drop=False) # Index becomes column (usually 'Date' or 'index')
         
-        # Reset Index to column
-        full_df = full_df.reset_index()
+        # Rename columns to standard names if needed
+        # We expect a column with date info.
+        # Find the date column
+        date_col = None
+        for c in full_df.columns:
+            if str(c).lower() in ['date', 'datetime', 'time', 'timestamp', 'index']:
+                # Check if it looks like date
+                if pd.api.types.is_datetime64_any_dtype(full_df[c]):
+                    date_col = c
+                    break
         
-        # Normalize Date Column (Remove Time zone/Time)
-        if 'Date' in full_df.columns:
-            full_df['Date'] = pd.to_datetime(full_df['Date']).dt.normalize()
+        if not date_col and 'Date' in full_df.columns:
+             date_col = 'Date' # Try explicit name even if type not auto-detected yet
+             
+        if not date_col:
+            # Maybe the first column is date?
+            date_col = full_df.columns[0]
             
-        # Deduplicate (Strict)
-        # Sort to keep latest
-        if 'Date' in full_df.columns and 'Ticker' in full_df.columns:
-            full_df = full_df.sort_values(['Date', 'Ticker'])
-            full_df = full_df.drop_duplicates(subset=['Date', 'Ticker'], keep='last')
-        else:
-            return None, "Columns 'Date' and 'Ticker' required after processing."
+        # Normalize
+        try:
+            full_df[date_col] = pd.to_datetime(full_df[date_col]).dt.normalize()
+        except:
+            return None, f"Could not identify/convert Date column. Found: {full_df.columns}"
+            
+        # Rename to 'Date' strict
+        if date_col != 'Date':
+             full_df = full_df.rename(columns={date_col: 'Date'})
+             
+        # Just in case we have multiple 'Date' columns due to reset, prevent ambiguity
+        # Filter to keep only one 'Date'
+        # Can't easily filter by name redundancy in pandas df[cols], but we can drop redundant ones
+        # Actually resetting index with drop=False is safer if we know index is date.
         
-        # Set MultiIndex [Date, Ticker]
+        # Ensure Ticker
+        if 'Ticker' not in full_df.columns:
+            return None, "Ticker column missing."
+            
+        # 2. Strict Deduplication
+        # Remove any rows where Date+Ticker is duplicated
+        full_df = full_df.drop_duplicates(subset=['Date', 'Ticker'], keep='last')
+        
+        # 3. Set Index
         full_df = full_df.set_index(['Date', 'Ticker']).sort_index()
         
-        # Verify Uniqueness
+        # 4. Final Safety Check
         if not full_df.index.is_unique:
-             # Force deduplication on index
+             # This should barely happen after drop_duplicates on subset keys
              full_df = full_df[~full_df.index.duplicated(keep='last')]
+             
+        # 2. Generate Alphas
         
         # 2. Generate Alphas
         
