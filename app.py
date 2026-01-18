@@ -2013,7 +2013,11 @@ elif selection == "🤖 AI 모델 테스팅":
                 if track_sel and st.button("📈 실전 성과 분석 시작 (Live Track)"):
                     hist_for_track = st.session_state.portfolio_history[track_sel]
                     
-                    if isinstance(hist_for_track, list) and len(hist_for_track) > 0:
+                    # Normalize to list (Handle Old Dict Format)
+                    if not isinstance(hist_for_track, list):
+                        hist_for_track = [hist_for_track]
+                        
+                    if len(hist_for_track) > 0:
                         with st.spinner("데이터 다운로드 및 수익률 계산 중... (시간이 조금 걸릴 수 있습니다)"):
                             try:
                                 # Safe Import Check
