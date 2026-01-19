@@ -1616,10 +1616,6 @@ elif selection == "🤖 AI 모델 테스팅":
                 "model": model,
                 "scaler": scaler,
                 "feature_cols": feature_cols,
-            st.session_state.trained_models[model_type] = {
-                "model": model,
-                "scaler": scaler,
-                "feature_cols": feature_cols,
                 "full_data": fast_data, # Only recent data
                 "valid_tickers": fast_valid_tickers,
                 "top_k": top_k_inference, # [Fix] Use the inference specific slider
