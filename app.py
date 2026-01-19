@@ -1600,6 +1600,22 @@ elif selection == "🤖 AI 모델 테스팅":
                          sys.modules['qlib.contrib.model.gbdt'] = m_gbdt
                          m_c_model.gbdt = m_gbdt
                          
+                         # [Fix] qlib.contrib.model.pytorch_transformer (Transformer Model)
+                         m_trans = ModuleType('qlib.contrib.model.pytorch_transformer')
+                         m_trans.TransformerModel = MockQlibBase
+                         sys.modules['qlib.contrib.model.pytorch_transformer'] = m_trans
+                         m_c_model.pytorch_transformer = m_trans
+                         
+                         # [Fix] All Model (Generalized fallback)
+                         m_c_model.all_model = m_trans
+                         sys.modules['qlib.contrib.model.all_model'] = m_trans
+                         
+                         # [Fix] Linear Model
+                         m_linear = ModuleType('qlib.contrib.model.linear')
+                         m_linear.LinearModel = MockQlibBase
+                         sys.modules['qlib.contrib.model.linear'] = m_linear
+                         m_c_model.linear = m_linear
+                         
                          # qlib.data
                          m_data = ModuleType('qlib.data')
                          sys.modules['qlib.data'] = m_data
