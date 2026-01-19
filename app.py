@@ -1554,14 +1554,17 @@ elif selection == "🤖 AI 모델 테스팅":
                  import sys
                  from types import ModuleType
                  
-                 # 1. Check if qlib is missing
-                 # 1. Check if qlib is missing
-                 if 'qlib' not in sys.modules:
-                     try:
-                         import qlib
-                     except ImportError:
+                 # 1. Robust Import Check
+                 need_mock = False
+                 try:
+                     import qlib.contrib.model.pytorch_transformer
+                     import qlib.contrib.model.gbdt
+                 except ImportError:
+                     need_mock = True
+                 
+                 if need_mock:
                          # Create Mock Objects to satisfy pickle.load
-                         st.toast("⚠️ Qlib 미설치 환경: 모델 로딩을 위해 고급 Mocking을 시도합니다.")
+                         st.toast("⚠️ Qlib 모듈 로드 실패: 강력한 Mocking을 적용합니다.")
                          
                          class MockQlibBase:
                              def __init__(self, *args, **kwargs): pass
