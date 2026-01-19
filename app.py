@@ -1538,117 +1538,129 @@ elif selection == "🤖 AI 모델 테스팅":
         found_files.sort(key=os.path.getmtime, reverse=True)
         
         # Pretty names for Dropdown
+        # 0. Find PyTorch Models (.pth + .json)
+        # Search for pairs: {name}_weights.pth and {name}_config.json
+        pth_files = glob.glob(os.path.join(MODEL_SAVE_DIR, "*_weights.pth"))
+        pytorch_models = {}
+        for p in pth_files:
+            base = p.replace("_weights.pth", "")
+            config_file = f"{base}_config.json"
+            if os.path.exists(config_file):
+                pytorch_models[os.path.basename(base)] = {'weights': p, 'config': config_file}
+
+        # Combine options
+        # Existing .pkl files
         file_options = {}
+        found_files = glob.glob(os.path.join(MODEL_SAVE_DIR, search_pattern))
+        # Add explicit colab uploads
+        found_files += glob.glob(os.path.join(MODEL_SAVE_DIR, "colab_*.pkl"))
+        
         for f in found_files:
             fname = os.path.basename(f).replace(".pkl", "")
-            file_options[fname] = f
+            file_options[fname] = {'type': 'pkl', 'path': f}
             
-        st.info("💡 저장된 모델이 발견되었습니다.")
-        selected_ver = st.selectbox("📂 불러올 모델 버전 선택", list(file_options.keys()))
+        # Add PyTorch models to the list
+        for name, paths in pytorch_models.items():
+            file_options[f"[PyTorch] {name}"] = {'type': 'pth', 'path': paths['weights'], 'config': paths['config']}
+
+        st.info(f"💡 저장된 모델: {len(file_options)}개 발견됨")
+        selected_ver_key = st.selectbox("📂 불러올 모델 버전 선택", list(file_options.keys()))
+        
+        selected_ver = file_options.get(selected_ver_key)
         
         if selected_ver:
              try:
-                 # -------------------------------------------------------------------------
-                 # [Hack] Mock Qlib for loading Colab models on non-Qlib environment (Window/Cloud)
-                 # -------------------------------------------------------------------------
-                 import sys
-                 from types import ModuleType
-                 
-                 # 1. Robust Import Check
-                 need_mock = False
-                 try:
-                     import qlib.contrib.model.pytorch_transformer
-                     import qlib.contrib.model.gbdt
-                 except ImportError:
-                     need_mock = True
-                 
-                 if need_mock:
-                         # Create Mock Objects to satisfy pickle.load
-                         st.toast("⚠️ Qlib 모듈 로드 실패: 강력한 Mocking을 적용합니다.")
-                         
-                         class MockQlibBase:
-                             def __init__(self, *args, **kwargs): pass
-                             def fit(self, *args, **kwargs): pass
-                             def predict(self, *args, **kwargs): return []
-                             def get_feature_importance(self, *args, **kwargs): return []
-                         
-                         def create_mock_package(name):
-                             m = ModuleType(name)
-                             m.__path__ = [] # Crucial: Makes it a package
-                             m.__package__ = name
-                             sys.modules[name] = m
-                             return m
-                         
-                         # Check/Create hierarchy safely
-                         def ensure_module(name):
-                             if name not in sys.modules:
-                                 return create_mock_package(name)
-                             return sys.modules[name]
+                 if selected_ver['type'] == 'pth':
+                     # ---------------------------------------------------------
+                     # [Safe] Load Pure PyTorch Model (No Qlib Required)
+                     # ---------------------------------------------------------
+                     import torch
+                     import torch.nn as nn
+                     import json
+                     import math
 
-                         # qlib
-                         m_qlib = ensure_module('qlib')
-                         
-                         # qlib.model (Package)
-                         m_model = ensure_module('qlib.model')
-                         m_qlib.model = m_model
-                         
-                         # qlib.model.base (Module)
-                         m_base = ensure_module('qlib.model.base')
-                         m_base.Model = MockQlibBase
-                         m_model.base = m_base
-                         
-                         # qlib.contrib (Package)
-                         m_contrib = ensure_module('qlib.contrib')
-                         m_qlib.contrib = m_contrib
-                         
-                         # qlib.contrib.model (Package)
-                         m_c_model = ensure_module('qlib.contrib.model')
-                         m_contrib.model = m_c_model
-                         
-                         # qlib.contrib.model.gbdt (Module)
-                         m_gbdt = ensure_module('qlib.contrib.model.gbdt')
-                         m_gbdt.LGBModel = MockQlibBase
-                         m_c_model.gbdt = m_gbdt
-                         
-                         # [Fix] qlib.contrib.model.pytorch_transformer (Transformer Model)
-                         m_trans = ensure_module('qlib.contrib.model.pytorch_transformer')
-                         m_trans.TransformerModel = MockQlibBase
-                         m_trans.Transformer = MockQlibBase # [Fix] Alias for pickle compatibility
-                         m_c_model.pytorch_transformer = m_trans
-                         
-                         # qlib.contrib.model.all_model (Module - Fallback)
-                         m_all = ensure_module('qlib.contrib.model.all_model')
-                         m_c_model.all_model = m_all
-                         
-                         # qlib.contrib.model.linear (Module)
-                         m_linear = ensure_module('qlib.contrib.model.linear')
-                         m_linear.LinearModel = MockQlibBase
-                         m_c_model.linear = m_linear
-                         
-                         # qlib.data (Package)
-                         m_data = ensure_module('qlib.data')
-                         m_qlib.data = m_data
-                         
-                         # qlib.data.dataset (Module)
-                         m_dataset = ensure_module('qlib.data.dataset')
-                         m_dataset.DatasetH = MockQlibBase
-                         m_dataset.Dataset = MockQlibBase
-                         m_data.dataset = m_dataset
+                     st.toast("🛡️ 안전 모드: 순수 PyTorch 모델을 로딩합니다.")
 
-                         # qlib.workflow (Module)
-                         m_workflow = ensure_module('qlib.workflow')
-                         m_qlib.workflow = m_workflow
-                         
-                         # qlib.log (Module)
-                         m_log = ensure_module('qlib.log')
-                         m_qlib.log = m_log
-                         sys.modules['qlib.log'] = m_log
-                         m_qlib.log = m_log
-                 
-                 # -------------------------------------------------------------------------
-                 
-                 with open(file_options[selected_ver], "rb") as f:
-                     loaded_model_data = pickle.load(f)
+                     # 1. Load Config
+                     with open(selected_ver['config'], 'r') as f:
+                         conf = json.load(f)
+
+                     # 2. Define Pure PyTorch Transformer Class (Indentical to Qlib's logic)
+                     class PositionalEncoding(nn.Module):
+                        def __init__(self, d_model, max_len=1000):
+                            super(PositionalEncoding, self).__init__()
+                            pe = torch.zeros(max_len, d_model)
+                            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+                            div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+                            pe[:, 0::2] = torch.sin(position * div_term)
+                            pe[:, 1::2] = torch.cos(position * div_term)
+                            self.register_buffer('pe', pe.unsqueeze(0))
+                        def forward(self, x):
+                            return x + self.pe[:, :x.size(1), :]
+
+                     class TransformerModel(nn.Module):
+                        def __init__(self, d_feat, d_model=64, nhead=8, num_layers=2, dropout=0.1, device='cpu'):
+                            super(TransformerModel, self).__init__()
+                            self.feature_layer = nn.Linear(d_feat, d_model)
+                            self.pos_encoder = PositionalEncoding(d_model)
+                            encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_model, dropout)
+                            self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
+                            self.decoder_layer = nn.Linear(d_model, 1)
+                            self.device = device
+                            self.d_feat = d_feat
+                        def forward(self, src):
+                            src = self.feature_layer(src)
+                            src = self.pos_encoder(src)
+                            output = self.transformer_encoder(src)
+                            output = self.decoder_layer(output[:, -1, :]) # Use last step
+                            return output.squeeze()
+                        def predict(self, dataset):
+                            # Adapter for DataFrame input
+                            if isinstance(dataset, pd.DataFrame):
+                                # Convert DF to Tensor [Batch, Time, Feat]
+                                # Assuming simplified input: just raw features flattened? 
+                                # Wait, Transformer needs [Batch, Seq_Len, Feat].
+                                # Our simple feature set is just [Batch, Feat] checks.
+                                # For compatibility with 'simple' feature format (2D), we unsqueeze time dim.
+                                x = torch.tensor(dataset.values, dtype=torch.float32).to(self.device)
+                                if len(x.shape) == 2:
+                                    x = x.unsqueeze(1) # [Batch, 1, Feat]
+                                
+                                self.eval()
+                                with torch.no_grad():
+                                    pred = self.forward(x)
+                                return pred.cpu().numpy()
+                            return []
+
+                     # 3. Initialize Model
+                     model = TransformerModel(
+                         d_feat=conf.get('d_feat', 20), # Fallback 20
+                         d_model=conf.get('d_model', 64),
+                         nhead=conf.get('nhead', 8),
+                         num_layers=conf.get('num_layers', 2),
+                         device='cpu' # Force CPU for Inference
+                     )
+                     
+                     # 4. Load Weights
+                     model.load_state_dict(torch.load(selected_ver['path'], map_location=torch.device('cpu')))
+                     model.eval()
+                     
+                     # 5. Wrap as standard object
+                     loaded_model_data = {
+                         "model": model,
+                         "feature_level": "Standard", # Default
+                         "description": "PyTorch Transformer (Imported)"
+                     }
+                     
+                 else:
+                     # Traditional Pickle Loading (Mock Logic)
+                     with open(selected_ver['path'], "rb") as f:
+                         loaded_model_data = pickle.load(f)
+
+             except Exception as e:
+                 st.error(f"모델 로드 실패: {e}") 
+                 if 'qlib' in str(e):
+                      st.error("💡 Qlib 관련 에러입니다. 순수 PyTorch 모드(.pth)를 사용해보세요.")
              except Exception as e:
                  st.error(f"모델 로드 실패: {e}")
 
