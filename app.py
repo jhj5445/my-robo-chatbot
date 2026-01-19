@@ -1610,9 +1610,10 @@ elif selection == "🤖 AI 모델 테스팅":
                          m_gbdt.LGBModel = MockQlibBase
                          m_c_model.gbdt = m_gbdt
                          
-                         # qlib.contrib.model.pytorch_transformer (Module)
+                         # [Fix] qlib.contrib.model.pytorch_transformer (Transformer Model)
                          m_trans = ensure_module('qlib.contrib.model.pytorch_transformer')
                          m_trans.TransformerModel = MockQlibBase
+                         m_trans.Transformer = MockQlibBase # [Fix] Alias for pickle compatibility
                          m_c_model.pytorch_transformer = m_trans
                          
                          # qlib.contrib.model.all_model (Module - Fallback)
