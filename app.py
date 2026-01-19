@@ -1548,6 +1548,82 @@ elif selection == "🤖 AI 모델 테스팅":
         
         if selected_ver:
              try:
+                 # -------------------------------------------------------------------------
+                 # [Hack] Mock Qlib for loading Colab models on non-Qlib environment (Window/Cloud)
+                 # -------------------------------------------------------------------------
+                 import sys
+                 from types import ModuleType
+                 
+                 # 1. Check if qlib is missing
+                 if 'qlib' not in sys.modules:
+                     try:
+                         import qlib
+                     except ImportError:
+                         # Create Mock Objects to satisfy pickle.load
+                         st.toast("⚠️ Qlib 미설치 환경: 모델 로딩을 위해 Mocking을 시도합니다.")
+                         
+                         class MockQlibBase:
+                             def __init__(self, *args, **kwargs): pass
+                             def fit(self, *args, **kwargs): pass
+                             def predict(self, *args, **kwargs): return []
+                             def get_feature_importance(self, *args, **kwargs): return []
+                         
+                         # Define hierarchy
+                         # qlib
+                         m_qlib = ModuleType('qlib')
+                         sys.modules['qlib'] = m_qlib
+                         
+                         # qlib.model
+                         m_model = ModuleType('qlib.model')
+                         sys.modules['qlib.model'] = m_model
+                         m_qlib.model = m_model
+                         
+                         # qlib.model.base
+                         m_base = ModuleType('qlib.model.base')
+                         m_base.Model = MockQlibBase # The Class
+                         sys.modules['qlib.model.base'] = m_base
+                         m_model.base = m_base
+                         
+                         # qlib.contrib
+                         m_contrib = ModuleType('qlib.contrib')
+                         sys.modules['qlib.contrib'] = m_contrib
+                         m_qlib.contrib = m_contrib
+                         
+                         # qlib.contrib.model
+                         m_c_model = ModuleType('qlib.contrib.model')
+                         sys.modules['qlib.contrib.model'] = m_c_model
+                         m_contrib.model = m_c_model
+                         
+                         # qlib.contrib.model.gbdt (LGBModel usually lives here)
+                         m_gbdt = ModuleType('qlib.contrib.model.gbdt')
+                         m_gbdt.LGBModel = MockQlibBase
+                         sys.modules['qlib.contrib.model.gbdt'] = m_gbdt
+                         m_c_model.gbdt = m_gbdt
+                         
+                         # qlib.data
+                         m_data = ModuleType('qlib.data')
+                         sys.modules['qlib.data'] = m_data
+                         m_qlib.data = m_data
+                         
+                         # qlib.data.dataset
+                         m_dataset = ModuleType('qlib.data.dataset')
+                         m_dataset.DatasetH = MockQlibBase
+                         m_dataset.Dataset = MockQlibBase
+                         sys.modules['qlib.data.dataset'] = m_dataset
+                         m_data.dataset = m_dataset
+
+                         # qlib.workflow
+                         m_workflow = ModuleType('qlib.workflow')
+                         sys.modules['qlib.workflow'] = m_workflow
+                         m_qlib.workflow = m_workflow
+                         
+                         # qlib.log
+                         m_log = ModuleType('qlib.log')
+                         sys.modules['qlib.log'] = m_log
+                         m_qlib.log = m_log
+                 
+                 # -------------------------------------------------------------------------
+                 
                  with open(file_options[selected_ver], "rb") as f:
                      loaded_model_data = pickle.load(f)
              except Exception as e:
