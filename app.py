@@ -1524,6 +1524,13 @@ elif selection == "🤖 AI 모델 테스팅":
     search_pattern = os.path.join(MODEL_SAVE_DIR, f"*{safe_type}*.pkl")
     found_files = glob.glob(search_pattern)
     
+    # [Fix] Also search for 'colab_' files regardless of type selection (Universal Fallback)
+    colab_pattern = os.path.join(MODEL_SAVE_DIR, "colab_*.pkl")
+    colab_files = glob.glob(colab_pattern)
+    
+    # Union of files (avoid duplicates)
+    found_files = list(set(found_files + colab_files))
+    
     loaded_model_data = None
     
     if found_files:
