@@ -1750,15 +1750,6 @@ elif selection == "🤖 AI 모델 테스팅":
 
         # TAB 2: Recommendations (Top-K)
         with tab2:
-            st.markdown(f"### 🚀 오늘의 Top-{model_info.get('top_k', 10)} 추천 종목")
-            
-            # Recalculate or Use Saved?
-            # Fast Inference path saves 'full_data' (which is actually just recent data).
-            # Training path saves 'full_data'.
-            
-            # Logic:
-            # Iterate valid tickers -> Predict -> Sort -> Display
-            
             current_model = model_info['model']
             current_scaler = model_info['scaler']
             current_feats = model_info['feature_cols']
@@ -1804,14 +1795,17 @@ elif selection == "🤖 AI 모델 테스팅":
                 df_recs = pd.DataFrame(recs)
                 df_recs = df_recs.sort_values(by="Score", ascending=False).reset_index(drop=True)
                 
-                # Weight Calculation (Simple Softmax or Rank-based? User asked for weights)
-                # Let's use Score-based weighting (Normalized)
-                # But 'Score' can be negative (Linear Reg).
-                # Safe approach: Equal Weight for Top-K
+                # Dynamic Top-K Adjustment
+                actual_count = len(df_recs)
+                final_k = min(current_top_k, actual_count)
                 
-                final_picks = df_recs.head(current_top_k).copy()
+                st.markdown(f"### 🚀 오늘의 Top-{final_k} 추천 종목")
                 
-                # Assign Equal Weight (Simple)
+                if actual_count < current_top_k:
+                    st.info(f"ℹ️ 요청하신 Top-{current_top_k}보다 분석 가능한 종목 수가 적습니다. (전체 유니버스: {actual_count}개)")
+                
+                # Weight Calculation (Equal Weight for Top-K)
+                final_picks = df_recs.head(final_k).copy()
                 weight_pct = 100.0 / len(final_picks)
                 final_picks['Weight(%)'] = weight_pct
                 
@@ -1827,7 +1821,7 @@ elif selection == "🤖 AI 모델 테스팅":
                         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "model_type": model_type,
                         "holdings": final_picks.to_dict(orient='records'),
-                        "top_k": current_top_k,
+                        "top_k": final_k,
                         "feature_level": model_info.get('feature_level', 'Unknown'),
                         "horizon": model_info.get('horizon', 'Unknown'),
                         "train_period": model_info.get('train_period', 'Unknown')
@@ -1836,8 +1830,7 @@ elif selection == "🤖 AI 모델 테스팅":
                     # File-based Save
                     # Load existing
                     hist = load_portfolio_history()
-                    # Append (Use logic from before, or duplicate check)
-                    # For simplicity, append list
+                    # Append
                     if not isinstance(hist, list): hist = []
                     hist.append(save_entry)
                     save_portfolio_history(hist)
@@ -1850,17 +1843,67 @@ elif selection == "🤖 AI 모델 테스팅":
         with tab3:
             st.markdown("### 📜 나의 포트폴리오 저장 이력")
             
+            # [Restored Feature] Import History
+            with st.expander("📂 백업 파일에서 불러오기 (Import History)", expanded=False):
+                st.caption("기존에 다운로드 받았던 `portfolio_history.json` 파일을 업로드하면 복원됩니다.")
+                uploaded_file = st.file_uploader("JSON 파일 선택", type=["json"], key="history_uploader")
+                
+                if uploaded_file is not None:
+                    try:
+                        imported_data = json.load(uploaded_file)
+                        if isinstance(imported_data, list):
+                            # Append to current history
+                            current_hist = load_portfolio_history()
+                            if not isinstance(current_hist, list): current_hist = []
+                            
+                            # Deduplication check (simple date check)
+                            existing_dates = {x.get('date') for x in current_hist}
+                            count = 0
+                            for item in imported_data:
+                                if item.get('date') not in existing_dates:
+                                    current_hist.append(item)
+                                    count += 1
+                                    
+                            if count > 0:
+                                save_portfolio_history(current_hist)
+                                st.success(f"✅ {count}개의 포트폴리오 이력이 복원되었습니다. 화면을 새로고침합니다.")
+                                st.rerun()
+                            else:
+                                st.warning("이미 존재하는 이력들입니다.")
+                        else:
+                            st.error("올바르지 않은 JSON 형식입니다.")
+                    except Exception as e:
+                        st.error(f"파일 불러오기 실패: {e}")
+            
             # Load History
             hist_data = load_portfolio_history()
             
             if not hist_data:
                 st.info("아직 저장된 포트폴리오가 없습니다.")
             else:
+                # History Download Button
+                json_str = json.dumps(hist_data, default=str, indent=4)
+                st.download_button(
+                    label="💾 전체 이력 다운로드 (Backup)",
+                    data=json_str,
+                    file_name=f"portfolio_history_{datetime.now().strftime('%Y%m%d')}.json",
+                    mime="application/json"
+                )
+                st.divider()
+
                 # Show list
                 # Reverse order
                 if isinstance(hist_data, list):
                     for idx, item in enumerate(reversed(hist_data)):
+                        idx_real = len(hist_data) - 1 - idx
                         with st.expander(f"📅 {item.get('date', 'Unknown')} - {item.get('model_type')} ({len(item.get('holdings', []))} Stocks)"):
+                            c_del, c_view = st.columns([1, 5])
+                            with c_del:
+                                if st.button("🗑️ 삭제", key=f"del_hist_{idx_real}"):
+                                    del hist_data[idx_real]
+                                    save_portfolio_history(hist_data)
+                                    st.rerun()
+                                    
                             st.write(f"**Top-K**: {item.get('top_k')} | **Horizon**: {item.get('horizon')}")
                             h_df = pd.DataFrame(item.get('holdings', []))
                             st.dataframe(h_df)
