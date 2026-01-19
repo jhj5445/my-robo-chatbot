@@ -492,7 +492,7 @@ with st.sidebar:
     
     selection = st.radio(
         "메뉴 선택", 
-        ["🏠 홈 (Dashboard)", "🤖 로보 어드바이저 (Demo)", "🔎 ETF 구성 종목 검색", "🤖 AI 모델 테스팅", "🧪 Qlib 실험실 (Pro)", "🔍 기술적 패턴 스캐너", "⚖️ 포트폴리오 최적화"]
+        ["🏠 홈 (Dashboard)", "📄 Macro Talking Point", "🤖 로보 어드바이저 (Demo)", "🔎 ETF 구성 종목 검색", "🤖 AI 모델 테스팅", "🧪 Qlib 실험실 (Pro)", "🔍 기술적 패턴 스캐너", "⚖️ 포트폴리오 최적화", "🤖 챗봇"]
     )
 
 import requests
@@ -534,6 +534,45 @@ def get_nasdaq100_tickers():
         st.error(f"NASDAQ 100 리스트를 가져오는 중 오류: {e}")
         return []
 
+
+
+if selection == "🏠 홈 (Dashboard)":
+    st.title("🏠 Antigravity Dashboard")
+    st.markdown("### 🚀 AI가 분석하는 실전 트레이딩/투자 플랫폼")
+    
+    # Simple Dashboard Widgets
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("S&P 500 (SPY)", "Live", "checking...")
+    with col2:
+        st.metric("NASDAQ 100 (QQQ)", "Live", "checking...")
+    with col3:
+        st.metric("KOSPI 200", "Live", "checking...")
+        
+    st.divider()
+    
+    st.info("👈 **사이드바에서 원하는 분석 도구를 선택하세요.**")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### 🤖 주요 기능")
+        st.markdown("""
+        - **🤖 로보 어드바이저**: 내 성향에 맞는 ETF 포트폴리오
+        - **🔎 ETF 역검색**: 내가 원하는 종목을 담은 ETF 찾기
+        - **🧪 Qlib 실험실**: Microsoft Qlib 기반 AI 알파 모델링
+        """)
+        
+    with c2:
+        st.markdown("#### 📢 Market Briefing")
+        if st.button("✨ 오늘의 시황 브리핑 생성 (Gemini)"):
+            with st.spinner("뉴스와 시세를 분석 중입니다..."):
+                try:
+                    prompt = "오늘의 미국 증시 및 한국 증시 주요 이슈를 3줄로 요약해줘."
+                    summary = generate_content_with_rotation(prompt)
+                    st.success(summary)
+                except Exception as e:
+                    st.error(f"생성 실패: {e}")
 
 if selection == "🤖 챗봇":
     st.title("🤖 로보어드바이저 상담")
@@ -602,7 +641,7 @@ if selection == "🤖 챗봇":
             except Exception as e:
                 st.error(f"오류가 발생했습니다: {e}")
 
-if selection == "📄 Macro Takling Point":
+if selection == "📄 Macro Talking Point":
     st.title("📄 Macro Talking Point")
     st.caption("각 지수와 날짜별 리포트를 확인하세요.")
     
@@ -1625,6 +1664,84 @@ elif selection == "🤖 AI 모델 테스팅":
             
             st.success(f"⚡ 빠른 분석 완료! 하단 '오늘의 추천 PICK'에서 결과를 확인하세요.")
             status_text.empty()
+            
+            # -----------------------------------------------------------------------------
+            # [Fix] Result Rendering for Fast Inference (Same logic as Training)
+            # -----------------------------------------------------------------------------
+            st.divider()
+            st.subheader("🚀 오늘의 추천 PICK (Latest Predictions)")
+            
+            # A. Generate Predictions for the Latest Date
+            recommendations = []
+            
+            for ticker in fast_valid_tickers:
+                df = fast_data[ticker]
+                if df.empty: continue
+                
+                # Get Last Row
+                last_row = df.iloc[[-1]] # Keep DataFrame format
+                
+                # Prepare Features
+                try:
+                    feat_vals = last_row[feature_cols].values
+                    feat_scaled = scaler.transform(feat_vals)
+                    
+                    # Predict
+                    score = 0
+                    if isinstance(model, dict): # Ensemble
+                         pass # Ensemble logic needs sub-models. Saved model might be just the dict?
+                         # If saved as dict, keys are likely "Linear", "LightGBM", etc.
+                         # Need to check structure. Assuming standalone model for now or simple handling.
+                         if "Linear" in model: score += model["Linear"].predict(feat_scaled)[0]
+                         if "LightGBM" in model: score += model["LightGBM"].predict(feat_scaled)[0]
+                         if "SVM" in model: score += model["SVM"].predict(feat_scaled)[0]
+                         score /= 3.0
+                    else:
+                        score = model.predict(feat_scaled)[0]
+                        
+                    recommendations.append({
+                        "종목코드": ticker,
+                        "AI 점수 (Score)": score,
+                        "현재가": last_row['Close'].values[0],
+                        "기준일": last_row.index[-1].strftime('%Y-%m-%d')
+                    })
+                except Exception as e:
+                    pass
+            
+            if recommendations:
+                rec_df = pd.DataFrame(recommendations)
+                rec_df = rec_df.sort_values(by="AI 점수 (Score)", ascending=False).reset_index(drop=True)
+                
+                # Top-K
+                top_k_final = min(top_k_inference, len(rec_df))
+                final_picks = rec_df.head(top_k_final)
+                
+                # Display
+                st.dataframe(
+                    final_picks.style.background_gradient(subset=['AI 점수 (Score)'], cmap='Greens'),
+                    use_container_width=True
+                )
+                
+                # Feature Importance (LightGBM Only)
+                if "LightGBM" in model_type or "LGBM" in str(type(model)):
+                    st.write("#### 🔍 주요 결정 요인 (Feature Importance)")
+                    try:
+                        # Extract Feature Importance
+                        lgb_model = model
+                        if isinstance(model, dict) and "LightGBM" in model: lgb_model = model["LightGBM"]
+                        
+                        if hasattr(lgb_model, 'feature_importances_'):
+                            fi_df = pd.DataFrame({
+                                'Feature': feature_cols,
+                                'Importance': lgb_model.feature_importances_
+                            }).sort_values(by='Importance', ascending=False).head(10)
+                            
+                            st.bar_chart(fi_df.set_index('Feature'))
+                    except:
+                        pass
+
+            else:
+                st.warning("⚠️ 데이터를 분석할 수 없습니다. (최신 데이터 부재 등)")
 
     elif 'scan_results' in st.session_state and not st.session_state.scan_results:
          st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
