@@ -12,3 +12,4 @@ setuptools
 finance-datareader
 html5lib
 beautifulsoup4
+torch
