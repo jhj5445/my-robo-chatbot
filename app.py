@@ -1447,7 +1447,7 @@ elif selection == "🤖 AI 모델 테스팅":
             c3.metric("동일 비중 (Equal)", f"{eq_ret:.2%}")
             
             st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
-            st.line_chart(results_df)
+            # st.line_chart(results_df) # Moved to Tab View
 
         # [Persistence Save] (Executed regardless of backtest result)
         try:
@@ -1708,43 +1708,166 @@ elif selection == "🤖 AI 모델 테스팅":
                 except Exception as e:
                     pass
             
-            if recommendations:
-                rec_df = pd.DataFrame(recommendations)
-                rec_df = rec_df.sort_values(by="AI 점수 (Score)", ascending=False).reset_index(drop=True)
-                
-                # Top-K
-                top_k_final = min(top_k_inference, len(rec_df))
-                final_picks = rec_df.head(top_k_final)
-                
-                # Display
-                st.dataframe(
-                    final_picks.style.background_gradient(subset=['AI 점수 (Score)'], cmap='Greens'),
-                    use_container_width=True
-                )
-                
-                # Feature Importance (LightGBM Only)
-                if "LightGBM" in model_type or "LGBM" in str(type(model)):
-                    st.write("#### 🔍 주요 결정 요인 (Feature Importance)")
-                    try:
-                        # Extract Feature Importance
-                        lgb_model = model
-                        if isinstance(model, dict) and "LightGBM" in model: lgb_model = model["LightGBM"]
-                        
-                        if hasattr(lgb_model, 'feature_importances_'):
-                            fi_df = pd.DataFrame({
-                                'Feature': feature_cols,
-                                'Importance': lgb_model.feature_importances_
-                            }).sort_values(by='Importance', ascending=False).head(10)
-                            
-                            st.bar_chart(fi_df.set_index('Feature'))
-                    except:
-                        pass
-
-            else:
-                st.warning("⚠️ 데이터를 분석할 수 없습니다. (최신 데이터 부재 등)")
+            # -----------------------------------------------------------------------------
+            # [Refactor] Results will be displayed in the Unified Tabs below
+            # -----------------------------------------------------------------------------
+            pass
 
     elif 'scan_results' in st.session_state and not st.session_state.scan_results:
          st.info("현재 기준 특이 패턴(골든크로스, 과매수/과매도 등)이 발견된 종목이 없습니다.")
+
+
+    # -----------------------------------------------------------------------------
+    # Unified Result Rendering (Tabs) - Runs for both Training & Inference
+    # -----------------------------------------------------------------------------
+    if model_type in st.session_state.trained_models:
+        st.divider()
+        st.subheader("📊 AI 모델 분석 결과")
+        
+        # Load Data
+        model_info = st.session_state.trained_models[model_type]
+        
+        tab1, tab2, tab3 = st.tabs(["📈 성과 분석 (Analysis)", "📋 오늘의 추천 (Recommendations)", "📜 히스토리 (History)"])
+        
+        # TAB 1: Analysis (Backtest)
+        with tab1:
+            st.markdown("### 📈 백테스팅 성과 (Backtest Performance)")
+            
+            # Check for Backtest Data
+            bd = model_info.get('backtest_data', {})
+            if bd and 'perf_df' in bd and not bd['perf_df'].empty:
+                 metrics = bd.get('metrics', {})
+                 res_df = bd['perf_df']
+                 
+                 c1, c2, c3 = st.columns(3)
+                 c1.metric("AI 포트폴리오 수익률", metrics.get("Total Return", "N/A"))
+                 c2.metric("S&P 500 수익률", metrics.get("SPY Return", "N/A"))
+                 c3.metric("동일 비중 (Equal)", metrics.get("EQ Return", "N/A"))
+                 
+                 st.line_chart(res_df)
+            else:
+                 st.info("백테스트 데이터가 없습니다 (Short-term Inference Mode 등).")
+
+        # TAB 2: Recommendations (Top-K)
+        with tab2:
+            st.markdown(f"### 🚀 오늘의 Top-{model_info.get('top_k', 10)} 추천 종목")
+            
+            # Recalculate or Use Saved?
+            # Fast Inference path saves 'full_data' (which is actually just recent data).
+            # Training path saves 'full_data'.
+            
+            # Logic:
+            # Iterate valid tickers -> Predict -> Sort -> Display
+            
+            current_model = model_info['model']
+            current_scaler = model_info['scaler']
+            current_feats = model_info['feature_cols']
+            current_data = model_info['full_data'] # Dict of DFs
+            current_tickers = model_info['valid_tickers']
+            current_top_k = model_info['top_k']
+            
+            recs = []
+            
+            for t in current_tickers:
+                if t in current_data:
+                    df = current_data[t]
+                    if df.empty: continue
+                    
+                    last_row = df.iloc[[-1]] 
+                    try:
+                        f_vals = last_row[current_feats].values
+                        f_scaled = current_scaler.transform(f_vals)
+                        
+                        score = 0
+                        if isinstance(current_model, dict):
+                             # Simple Avg for Ensemble
+                             cnt = 0
+                             for k in ["Linear", "LightGBM", "SVM"]:
+                                 if k in current_model:
+                                     score += current_model[k].predict(f_scaled)[0]
+                                     cnt += 1
+                             if cnt > 0: score /= cnt
+                        else:
+                            score = current_model.predict(f_scaled)[0]
+                            
+                        recs.append({
+                            "Code": t,
+                            "Name": t, # Feature improvement: Map to Real Name if possible
+                            "Score": score,
+                            "Price": last_row['Close'].values[0],
+                            "Date": last_row.index[-1].strftime('%Y-%m-%d')
+                        })
+                    except Exception as e:
+                        pass
+            
+            if recs:
+                df_recs = pd.DataFrame(recs)
+                df_recs = df_recs.sort_values(by="Score", ascending=False).reset_index(drop=True)
+                
+                # Weight Calculation (Simple Softmax or Rank-based? User asked for weights)
+                # Let's use Score-based weighting (Normalized)
+                # But 'Score' can be negative (Linear Reg).
+                # Safe approach: Equal Weight for Top-K
+                
+                final_picks = df_recs.head(current_top_k).copy()
+                
+                # Assign Equal Weight (Simple)
+                weight_pct = 100.0 / len(final_picks)
+                final_picks['Weight(%)'] = weight_pct
+                
+                st.dataframe(
+                    final_picks[['Code', 'Score', 'Price', 'Weight(%)', 'Date']].style.background_gradient(subset=['Score'], cmap='Greens'),
+                    use_container_width=True
+                )
+                
+                # Save Portfolio Button
+                if st.button("💾 이 포트폴리오 저장하기 (Save History)"):
+                    # Use helper function
+                    save_entry = {
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "model_type": model_type,
+                        "holdings": final_picks.to_dict(orient='records'),
+                        "top_k": current_top_k,
+                        "feature_level": model_info.get('feature_level', 'Unknown'),
+                        "horizon": model_info.get('horizon', 'Unknown'),
+                        "train_period": model_info.get('train_period', 'Unknown')
+                    }
+                    
+                    # File-based Save
+                    # Load existing
+                    hist = load_portfolio_history()
+                    # Append (Use logic from before, or duplicate check)
+                    # For simplicity, append list
+                    if not isinstance(hist, list): hist = []
+                    hist.append(save_entry)
+                    save_portfolio_history(hist)
+                    st.success("포트폴리오가 이력에 저장되었습니다.")
+            
+            else:
+                st.warning("추천 종목을 생성할 수 없습니다.")
+                
+        # TAB 3: History
+        with tab3:
+            st.markdown("### 📜 나의 포트폴리오 저장 이력")
+            
+            # Load History
+            hist_data = load_portfolio_history()
+            
+            if not hist_data:
+                st.info("아직 저장된 포트폴리오가 없습니다.")
+            else:
+                # Show list
+                # Reverse order
+                if isinstance(hist_data, list):
+                    for idx, item in enumerate(reversed(hist_data)):
+                        with st.expander(f"📅 {item.get('date', 'Unknown')} - {item.get('model_type')} ({len(item.get('holdings', []))} Stocks)"):
+                            st.write(f"**Top-K**: {item.get('top_k')} | **Horizon**: {item.get('horizon')}")
+                            h_df = pd.DataFrame(item.get('holdings', []))
+                            st.dataframe(h_df)
+                else:
+                    st.error("데이터 형식이 올바르지 않습니다.")
+                    
+
 
 
 # -----------------------------------------------------------------------------
