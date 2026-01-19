@@ -1555,12 +1555,13 @@ elif selection == "🤖 AI 모델 테스팅":
                  from types import ModuleType
                  
                  # 1. Check if qlib is missing
+                 # 1. Check if qlib is missing
                  if 'qlib' not in sys.modules:
                      try:
                          import qlib
                      except ImportError:
                          # Create Mock Objects to satisfy pickle.load
-                         st.toast("⚠️ Qlib 미설치 환경: 모델 로딩을 위해 Mocking을 시도합니다.")
+                         st.toast("⚠️ Qlib 미설치 환경: 모델 로딩을 위해 고급 Mocking을 시도합니다.")
                          
                          class MockQlibBase:
                              def __init__(self, *args, **kwargs): pass
@@ -1568,73 +1569,75 @@ elif selection == "🤖 AI 모델 테스팅":
                              def predict(self, *args, **kwargs): return []
                              def get_feature_importance(self, *args, **kwargs): return []
                          
-                         # Define hierarchy
-                         # qlib
-                         m_qlib = ModuleType('qlib')
-                         sys.modules['qlib'] = m_qlib
+                         def create_mock_package(name):
+                             m = ModuleType(name)
+                             m.__path__ = [] # Crucial: Makes it a package
+                             m.__package__ = name
+                             sys.modules[name] = m
+                             return m
                          
-                         # qlib.model
-                         m_model = ModuleType('qlib.model')
-                         sys.modules['qlib.model'] = m_model
+                         # Check/Create hierarchy safely
+                         def ensure_module(name):
+                             if name not in sys.modules:
+                                 return create_mock_package(name)
+                             return sys.modules[name]
+
+                         # qlib
+                         m_qlib = ensure_module('qlib')
+                         
+                         # qlib.model (Package)
+                         m_model = ensure_module('qlib.model')
                          m_qlib.model = m_model
                          
-                         # qlib.model.base
-                         m_base = ModuleType('qlib.model.base')
-                         m_base.Model = MockQlibBase # The Class
-                         sys.modules['qlib.model.base'] = m_base
+                         # qlib.model.base (Module)
+                         m_base = ensure_module('qlib.model.base')
+                         m_base.Model = MockQlibBase
                          m_model.base = m_base
                          
-                         # qlib.contrib
-                         m_contrib = ModuleType('qlib.contrib')
-                         sys.modules['qlib.contrib'] = m_contrib
+                         # qlib.contrib (Package)
+                         m_contrib = ensure_module('qlib.contrib')
                          m_qlib.contrib = m_contrib
                          
-                         # qlib.contrib.model
-                         m_c_model = ModuleType('qlib.contrib.model')
-                         sys.modules['qlib.contrib.model'] = m_c_model
+                         # qlib.contrib.model (Package)
+                         m_c_model = ensure_module('qlib.contrib.model')
                          m_contrib.model = m_c_model
                          
-                         # qlib.contrib.model.gbdt (LGBModel usually lives here)
-                         m_gbdt = ModuleType('qlib.contrib.model.gbdt')
+                         # qlib.contrib.model.gbdt (Module)
+                         m_gbdt = ensure_module('qlib.contrib.model.gbdt')
                          m_gbdt.LGBModel = MockQlibBase
-                         sys.modules['qlib.contrib.model.gbdt'] = m_gbdt
                          m_c_model.gbdt = m_gbdt
                          
-                         # [Fix] qlib.contrib.model.pytorch_transformer (Transformer Model)
-                         m_trans = ModuleType('qlib.contrib.model.pytorch_transformer')
+                         # qlib.contrib.model.pytorch_transformer (Module)
+                         m_trans = ensure_module('qlib.contrib.model.pytorch_transformer')
                          m_trans.TransformerModel = MockQlibBase
-                         sys.modules['qlib.contrib.model.pytorch_transformer'] = m_trans
                          m_c_model.pytorch_transformer = m_trans
                          
-                         # [Fix] All Model (Generalized fallback)
-                         m_c_model.all_model = m_trans
-                         sys.modules['qlib.contrib.model.all_model'] = m_trans
+                         # qlib.contrib.model.all_model (Module - Fallback)
+                         m_all = ensure_module('qlib.contrib.model.all_model')
+                         m_c_model.all_model = m_all
                          
-                         # [Fix] Linear Model
-                         m_linear = ModuleType('qlib.contrib.model.linear')
+                         # qlib.contrib.model.linear (Module)
+                         m_linear = ensure_module('qlib.contrib.model.linear')
                          m_linear.LinearModel = MockQlibBase
-                         sys.modules['qlib.contrib.model.linear'] = m_linear
                          m_c_model.linear = m_linear
                          
-                         # qlib.data
-                         m_data = ModuleType('qlib.data')
-                         sys.modules['qlib.data'] = m_data
+                         # qlib.data (Package)
+                         m_data = ensure_module('qlib.data')
                          m_qlib.data = m_data
                          
-                         # qlib.data.dataset
-                         m_dataset = ModuleType('qlib.data.dataset')
+                         # qlib.data.dataset (Module)
+                         m_dataset = ensure_module('qlib.data.dataset')
                          m_dataset.DatasetH = MockQlibBase
                          m_dataset.Dataset = MockQlibBase
-                         sys.modules['qlib.data.dataset'] = m_dataset
                          m_data.dataset = m_dataset
 
-                         # qlib.workflow
-                         m_workflow = ModuleType('qlib.workflow')
-                         sys.modules['qlib.workflow'] = m_workflow
+                         # qlib.workflow (Module)
+                         m_workflow = ensure_module('qlib.workflow')
                          m_qlib.workflow = m_workflow
                          
-                         # qlib.log
-                         m_log = ModuleType('qlib.log')
+                         # qlib.log (Module)
+                         m_log = ensure_module('qlib.log')
+                         m_qlib.log = m_log
                          sys.modules['qlib.log'] = m_log
                          m_qlib.log = m_log
                  
