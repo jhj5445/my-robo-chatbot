@@ -1510,6 +1510,10 @@ elif selection == "🤖 AI 모델 테스팅":
     if loaded_model_data:
         saved_ts = loaded_model_data.get('timestamp', 'Unknown')
         
+        # [UX Improvement] Add Top-K slider specific for Inference here
+        st.write("#### ⚙️ 추론 설정 (Inference Settings)")
+        top_k_inference = st.slider("추천할 종목 수 (Top K)", min_value=1, max_value=50, value=10, key="top_k_inf")
+        
         if st.button("⚡ 선택된 모델로 바로 분석 (Fast Inference)"):
             # Inject Backtest Data for Analysis Tab
             # Inject Backtest Data for Analysis Tab
@@ -1612,9 +1616,13 @@ elif selection == "🤖 AI 모델 테스팅":
                 "model": model,
                 "scaler": scaler,
                 "feature_cols": feature_cols,
+            st.session_state.trained_models[model_type] = {
+                "model": model,
+                "scaler": scaler,
+                "feature_cols": feature_cols,
                 "full_data": fast_data, # Only recent data
                 "valid_tickers": fast_valid_tickers,
-                "top_k": top_k_select, # Allow changing top_k for inference
+                "top_k": top_k_inference, # [Fix] Use the inference specific slider
                 "feature_level": loaded_model_data['feature_level'],
                 "horizon": horizon_option
             }
