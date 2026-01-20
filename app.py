@@ -1764,7 +1764,10 @@ elif selection == "🤖 AI 모델 테스팅":
                         fast_data[ticker] = df
                         fast_valid_tickers.append(ticker)
                         
-                except:
+                except Exception as e:
+                    # [Debug] Show error if prediction fails
+                    if i < 3: # Show only first few errors to avoid spam
+                         st.error(f"Error for {ticker}: {e}")
                     pass
                 progress_bar.progress((i+1)/len(target_tickers))
             
