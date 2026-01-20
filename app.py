@@ -61,10 +61,12 @@ try:
 except ImportError:
     pass 
 
-# Impor Alpha Provider
 try:
     from alpha_provider import AlphaFactory
-except ImportError:
+except Exception as e:
+    import streamlit as st
+    st.error(f"❌ Critical Error importing alpha_provider: {e}")
+    print(f"❌ Critical Error importing alpha_provider: {e}")
     AlphaFactory = None
 
 MODEL_SAVE_DIR = "saved_models"
@@ -1852,6 +1854,8 @@ elif selection == "🤖 AI 모델 테스팅":
             # A. Generate Predictions for the Latest Date
             recommendations = []
             
+            st.write(f"🔎 Valid Tickers for Inference: {len(fast_valid_tickers)}") # Debug
+            
             for ticker in fast_valid_tickers:
                 df = fast_data[ticker]
                 if df.empty: continue
@@ -1866,42 +1870,35 @@ elif selection == "🤖 AI 모델 테스팅":
                     # 1. Scale (if scaler exists)
                     if scaler:
                          feat_scaled = scaler.transform(feat_vals.values)
-                         # Convert back to DataFrame if model needs it, or keep array
-                         # TransformerModel wrapper handles Tensor conversion from array/df values.
-                         # If scaler returns array, that's fine.
                     else:
                          feat_scaled = feat_vals.values
                     
                     # 2. [Critical] Check Feature Dimension (Padding for Alpha158 vs Standard mismatch)
-                    # Try to get expected dim from model
                     expected_dim = getattr(model, 'd_feat', None)
                     if expected_dim and feat_scaled.shape[1] < expected_dim:
-                         # Pad with zeros
                          current_dim = feat_scaled.shape[1]
                          pad_size = expected_dim - current_dim
-                         # Create padding (zeros)
                          import numpy as np
                          padding = np.zeros((feat_scaled.shape[0], pad_size))
-                         # Concatenate
                          feat_scaled = np.hstack([feat_scaled, padding])
-                         # Warn once
-                         if i == 0:
-                              st.toast(f"⚠️ Feature Padding Applied: {current_dim} -> {expected_dim}", icon="🧩")
                     
-                    # Predict
+                    # Debug: Show shape and first few values
+                    # if ticker == "AAPL":
+                    #      st.write(f"AAPL Shape: {feat_scaled.shape}")
+                    #      st.write(f"AAPL Feats: {feat_scaled[0][:5]}...")
                     
                     # Predict
                     score = 0
                     if isinstance(model, dict): # Ensemble
-                         pass # Ensemble logic needs sub-models. Saved model might be just the dict?
-                         # If saved as dict, keys are likely "Linear", "LightGBM", etc.
-                         # Need to check structure. Assuming standalone model for now or simple handling.
                          if "Linear" in model: score += model["Linear"].predict(feat_scaled)[0]
                          if "LightGBM" in model: score += model["LightGBM"].predict(feat_scaled)[0]
                          if "SVM" in model: score += model["SVM"].predict(feat_scaled)[0]
                          score /= 3.0
                     else:
                         score = model.predict(feat_scaled)[0]
+                    
+                    # Debug Score
+                    # st.write(f"{ticker} Score: {score}")
                         
                     recommendations.append({
                         "종목코드": ticker,
@@ -1910,6 +1907,7 @@ elif selection == "🤖 AI 모델 테스팅":
                         "기준일": last_row.index[-1].strftime('%Y-%m-%d')
                     })
                 except Exception as e:
+                    st.error(f"Inference Logic Error for {ticker}: {e}")
                     pass
             
             # -----------------------------------------------------------------------------
