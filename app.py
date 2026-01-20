@@ -1542,8 +1542,13 @@ elif selection == "🤖 AI 모델 테스팅":
         s = re.sub(r'[^\w\s-]', '', s)
         return s.replace(" ", "")
 
+    # [User Feedback] Scan ALL saved models, not just the selected type
+    # This allows loading a 'Linear' model even if Sidebar says 'Transformer'
     safe_type = sanitize_filename_search(model_type)
-    search_pattern = os.path.join(MODEL_SAVE_DIR, f"*{safe_type}*.pkl")
+    
+    # Original: valid_pattern = os.path.join(MODEL_SAVE_DIR, f"*{safe_type}*.pkl")
+    # New: Show all
+    search_pattern = os.path.join(MODEL_SAVE_DIR, "*.pkl")
     found_files = glob.glob(search_pattern)
     
     # [Fix] Also search for 'colab_' files regardless of type selection (Universal Fallback)
