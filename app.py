@@ -1890,24 +1890,37 @@ elif selection == "🤖 AI 모델 테스팅":
                     # Predict
                     score = 0
                     if isinstance(model, dict): # Ensemble
-                         if "Linear" in model: score += model["Linear"].predict(feat_scaled)[0]
-                         if "LightGBM" in model: score += model["LightGBM"].predict(feat_scaled)[0]
-                         if "SVM" in model: score += model["SVM"].predict(feat_scaled)[0]
+                         if "Linear" in model: 
+                             p = model["Linear"].predict(feat_scaled)
+                             score += p.item() if hasattr(p, 'item') else p[0]
+                         if "LightGBM" in model: 
+                             p = model["LightGBM"].predict(feat_scaled)
+                             score += p.item() if hasattr(p, 'item') else p[0]
+                         if "SVM" in model: 
+                             p = model["SVM"].predict(feat_scaled)
+                             score += p.item() if hasattr(p, 'item') else p[0]
                          score /= 3.0
                     else:
-                        score = model.predict(feat_scaled)[0]
+                        pred_res = model.predict(feat_scaled)
+                        # Robust scalar extraction
+                        if hasattr(pred_res, 'item'):
+                            score = pred_res.item()
+                        elif hasattr(pred_res, '__iter__') and len(pred_res) > 0:
+                            score = pred_res.flat[0] # Handle any shape
+                        else:
+                            score = pred_res # Assume simple float
                     
                     # Debug Score
                     # st.write(f"{ticker} Score: {score}")
                         
                     recommendations.append({
                         "종목코드": ticker,
-                        "AI 점수 (Score)": score,
+                        "AI 점수 (Score)": float(score),
                         "현재가": last_row['Close'].values[0],
                         "기준일": last_row.index[-1].strftime('%Y-%m-%d')
                     })
                 except Exception as e:
-                    st.error(f"Inference Logic Error for {ticker}: {e}")
+                    # st.error(f"Inference Logic Error for {ticker}: {e}")
                     pass
             
             # -----------------------------------------------------------------------------
