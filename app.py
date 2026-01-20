@@ -1992,33 +1992,7 @@ elif selection == "🤖 AI 모델 테스팅":
                  )
             else:
                  st.write("아직 추천 결과가 생성되지 않았습니다. 'Fast Inference' 버튼을 눌러주세요.")
-                    
-                    last_row = df.iloc[[-1]] 
-                    try:
-                        f_vals = last_row[current_feats].values
-                        f_scaled = current_scaler.transform(f_vals)
-                        
-                        score = 0
-                        if isinstance(current_model, dict):
-                             # Simple Avg for Ensemble
-                             cnt = 0
-                             for k in ["Linear", "LightGBM", "SVM"]:
-                                 if k in current_model:
-                                     score += current_model[k].predict(f_scaled)[0]
-                                     cnt += 1
-                             if cnt > 0: score /= cnt
-                        else:
-                            score = current_model.predict(f_scaled)[0]
-                            
-                        recs.append({
-                            "Code": t,
-                            "Name": t, # Feature improvement: Map to Real Name if possible
-                            "Score": score,
-                            "Price": last_row['Close'].values[0],
-                            "Date": last_row.index[-1].strftime('%Y-%m-%d')
-                        })
-                    except Exception as e:
-                        pass
+
             
             if recs:
                 df_recs = pd.DataFrame(recs)
