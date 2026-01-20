@@ -1645,7 +1645,9 @@ elif selection == "🤖 AI 모델 테스팅":
                      loaded_model_data = {
                          "model": model,
                          "feature_level": "Standard", # Default
-                         "description": "PyTorch Transformer (Imported)"
+                         "description": "PyTorch Transformer (Imported)",
+                         "scaler": None, # [Fix] Add default scaler
+                         "feature_cols": [] # [Fix] Add default empty list, will be populated on fly
                      }
                      
                  else:
@@ -1657,8 +1659,6 @@ elif selection == "🤖 AI 모델 테스팅":
                  st.error(f"모델 로드 실패: {e}") 
                  if 'qlib' in str(e):
                       st.error("💡 Qlib 관련 에러입니다. 순수 PyTorch 모드(.pth)를 사용해보세요.")
-             except Exception as e:
-                 st.error(f"모델 로드 실패: {e}")
 
     if loaded_model_data:
         saved_ts = loaded_model_data.get('timestamp', 'Unknown')
@@ -1667,6 +1667,9 @@ elif selection == "🤖 AI 모델 테스팅":
         st.write("#### ⚙️ 추론 설정 (Inference Settings)")
         top_k_inference = st.slider("추천할 종목 수 (Top K)", min_value=1, max_value=50, value=10, key="top_k_inf")
         
+        # [Fix] Robust feature level retrieval
+        feat_level = loaded_model_data.get('feature_level', 'Standard')
+
         if st.button("⚡ 선택된 모델로 바로 분석 (Fast Inference)"):
             # Inject Backtest Data for Analysis Tab
             # Inject Backtest Data for Analysis Tab
@@ -1746,8 +1749,14 @@ elif selection == "🤖 AI 모델 테스팅":
                     df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                     
                     # Feature Engineer
-                    df, _ = calculate_feature_set(df, loaded_model_data['feature_level'])
+                    df, _ = calculate_feature_set(df, loaded_model_data.get('feature_level', 'Standard'))
                     
+                    # [Fix] Auto-detect feature columns if missing (for PyTorch models)
+                    if not feature_cols:
+                         feature_cols = [c for c in df.columns if c not in ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']]
+                         loaded_model_data['feature_cols'] = feature_cols
+                    
+                    # Drop NaN
                     # Drop NaN
                     df.dropna(inplace=True)
                     
