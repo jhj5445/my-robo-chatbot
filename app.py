@@ -1808,11 +1808,7 @@ elif selection == "🤖 AI 모델 테스팅":
                         if len(feature_cols) != len(computed_cols) and len(computed_cols) == 158:
                              feature_cols = computed_cols
                     
-                    # Drop NaN
-                         feature_cols = [c for c in df.columns if c not in ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']]
-                         loaded_model_data['feature_cols'] = feature_cols
                     
-                    # Drop NaN
                     # Drop NaN
                     df.dropna(inplace=True)
                     
