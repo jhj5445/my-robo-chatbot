@@ -1984,63 +1984,36 @@ elif selection == "🤖 AI 모델 테스팅":
             
             if not rec_df.empty:
                  current_top_k = model_info.get('top_k', 5)
-                 rec_df = rec_df.sort_values(by="AI 점수 (Score)", ascending=False).head(current_top_k)
+                 # Sort and Limit
+                 final_picks = rec_df.sort_values(by="AI 점수 (Score)", ascending=False).head(current_top_k).copy()
+                 final_picks = final_picks.reset_index(drop=True)
+                 final_picks.index += 1 # 1-based index
                  
+                 st.markdown(f"### 🚀 오늘의 Top-{len(final_picks)} 추천 종목")
                  st.dataframe(
-                     rec_df.style.background_gradient(subset=['AI 점수 (Score)'], cmap="Greens"),
+                     final_picks.style.background_gradient(subset=['AI 점수 (Score)'], cmap="Greens"),
                      use_container_width=True
                  )
-            else:
-                 st.write("아직 추천 결과가 생성되지 않았습니다. 'Fast Inference' 버튼을 눌러주세요.")
-
-            
-            if recs:
-                df_recs = pd.DataFrame(recs)
-                df_recs = df_recs.sort_values(by="Score", ascending=False).reset_index(drop=True)
-                
-                # Dynamic Top-K Adjustment
-                actual_count = len(df_recs)
-                final_k = min(current_top_k, actual_count)
-                
-                st.markdown(f"### 🚀 오늘의 Top-{final_k} 추천 종목")
-                
-                if actual_count < current_top_k:
-                    st.info(f"ℹ️ 요청하신 Top-{current_top_k}보다 분석 가능한 종목 수가 적습니다. (전체 유니버스: {actual_count}개)")
-                
-                # Weight Calculation (Equal Weight for Top-K)
-                final_picks = df_recs.head(final_k).copy()
-                weight_pct = 100.0 / len(final_picks)
-                final_picks['Weight(%)'] = weight_pct
-                
-                st.dataframe(
-                    final_picks[['Code', 'Score', 'Price', 'Weight(%)', 'Date']].style.background_gradient(subset=['Score'], cmap='Greens'),
-                    use_container_width=True
-                )
-                
-                # Save Portfolio Button
-                if st.button("💾 이 포트폴리오 저장하기 (Save History)"):
-                    # Use helper function
-                    save_entry = {
+                 
+                 # Save Portfolio Button
+                 if st.button("💾 이 포트폴리오 저장하기 (Save History)"):
+                     from datetime import datetime
+                     save_entry = {
                         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "model_type": model_type,
                         "holdings": final_picks.to_dict(orient='records'),
-                        "top_k": final_k,
+                        "top_k": len(final_picks),
                         "feature_level": model_info.get('feature_level', 'Unknown'),
-                        "horizon": model_info.get('horizon', 'Unknown'),
-                        "train_period": model_info.get('train_period', 'Unknown')
-                    }
-                    
-                    # File-based Save
-                    # Load existing
-                    hist = load_portfolio_history()
-                    # Append
-                    if not isinstance(hist, list): hist = []
-                    hist.append(save_entry)
-                    save_portfolio_history(hist)
-                    st.success("포트폴리오가 이력에 저장되었습니다.")
-            
+                        "horizon": model_info.get('horizon', 'Unknown')
+                     }
+                     # Load existing & Append
+                     hist = load_portfolio_history()
+                     if not isinstance(hist, list): hist = []
+                     hist.append(save_entry)
+                     save_portfolio_history(hist)
+                     st.success("포트폴리오가 이력에 저장되었습니다.")
             else:
-                st.warning("추천 종목을 생성할 수 없습니다.")
+                 st.info("아직 추천 결과가 생성되지 않았습니다. 사이드바에서 'Fast Inference' 버튼을 눌러주세요.")
                 
         # TAB 3: History
         with tab3:
