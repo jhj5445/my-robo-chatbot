@@ -1617,8 +1617,15 @@ elif selection == "🤖 AI 모델 테스팅":
                             output = self.decoder_layer(output[:, -1, :]) # Use last step
                             return output.squeeze()
                         def predict(self, dataset):
+                            # Adapter for DataFrame or Numpy
+                            val = None
                             if isinstance(dataset, pd.DataFrame):
-                                x = torch.tensor(dataset.values, dtype=torch.float32).to(self.device)
+                                val = dataset.values
+                            elif isinstance(dataset, np.ndarray):
+                                val = dataset
+                            
+                            if val is not None:
+                                x = torch.tensor(val, dtype=torch.float32).to(self.device)
                                 if len(x.shape) == 2:
                                     x = x.unsqueeze(1) # [Batch, 1, Feat]
                                 self.eval()
@@ -1809,8 +1816,34 @@ elif selection == "🤖 AI 모델 테스팅":
                 
                 # Prepare Features
                 try:
-                    feat_vals = last_row[feature_cols].values
-                    feat_scaled = scaler.transform(feat_vals)
+                    feat_vals = last_row[feature_cols].copy() # Ensure DataFrame/Series
+                    
+                    # 1. Scale (if scaler exists)
+                    if scaler:
+                         feat_scaled = scaler.transform(feat_vals.values)
+                         # Convert back to DataFrame if model needs it, or keep array
+                         # TransformerModel wrapper handles Tensor conversion from array/df values.
+                         # If scaler returns array, that's fine.
+                    else:
+                         feat_scaled = feat_vals.values
+                    
+                    # 2. [Critical] Check Feature Dimension (Padding for Alpha158 vs Standard mismatch)
+                    # Try to get expected dim from model
+                    expected_dim = getattr(model, 'd_feat', None)
+                    if expected_dim and feat_scaled.shape[1] < expected_dim:
+                         # Pad with zeros
+                         current_dim = feat_scaled.shape[1]
+                         pad_size = expected_dim - current_dim
+                         # Create padding (zeros)
+                         import numpy as np
+                         padding = np.zeros((feat_scaled.shape[0], pad_size))
+                         # Concatenate
+                         feat_scaled = np.hstack([feat_scaled, padding])
+                         # Warn once
+                         if i == 0:
+                              st.toast(f"⚠️ Feature Padding Applied: {current_dim} -> {expected_dim}", icon="🧩")
+                    
+                    # Predict
                     
                     # Predict
                     score = 0
