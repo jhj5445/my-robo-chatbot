@@ -64,7 +64,8 @@ except ImportError:
 # Impor Alpha Provider
 try:
     from alpha_provider import AlphaFactory
-except ImportError:
+except Exception as e:
+    print(f"❌ Critical Error importing alpha_provider: {e}")
     AlphaFactory = None
 
 MODEL_SAVE_DIR = "saved_models"
