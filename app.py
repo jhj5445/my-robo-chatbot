@@ -1594,16 +1594,18 @@ elif selection == "🤖 AI 모델 테스팅":
                             div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
                             pe[:, 0::2] = torch.sin(position * div_term)
                             pe[:, 1::2] = torch.cos(position * div_term)
-                            self.register_buffer('pe', pe.unsqueeze(0))
+                            # [Fix] Shape match: [1000, 1, 64]
+                            self.register_buffer('pe', pe.unsqueeze(1))
                         def forward(self, x):
-                            return x + self.pe[:, :x.size(1), :]
+                            return x + self.pe[:x.size(0), :]
 
                      class TransformerModel(nn.Module):
                         def __init__(self, d_feat, d_model=64, nhead=8, num_layers=2, dropout=0.1, device='cpu'):
                             super(TransformerModel, self).__init__()
                             self.feature_layer = nn.Linear(d_feat, d_model)
                             self.pos_encoder = PositionalEncoding(d_model)
-                            encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_model, dropout)
+                            # [Fix] dim_feedforward=2048 (Default)
+                            encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, 2048, dropout)
                             self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
                             self.decoder_layer = nn.Linear(d_model, 1)
                             self.device = device
@@ -1615,17 +1617,10 @@ elif selection == "🤖 AI 모델 테스팅":
                             output = self.decoder_layer(output[:, -1, :]) # Use last step
                             return output.squeeze()
                         def predict(self, dataset):
-                            # Adapter for DataFrame input
                             if isinstance(dataset, pd.DataFrame):
-                                # Convert DF to Tensor [Batch, Time, Feat]
-                                # Assuming simplified input: just raw features flattened? 
-                                # Wait, Transformer needs [Batch, Seq_Len, Feat].
-                                # Our simple feature set is just [Batch, Feat] checks.
-                                # For compatibility with 'simple' feature format (2D), we unsqueeze time dim.
                                 x = torch.tensor(dataset.values, dtype=torch.float32).to(self.device)
                                 if len(x.shape) == 2:
                                     x = x.unsqueeze(1) # [Batch, 1, Feat]
-                                
                                 self.eval()
                                 with torch.no_grad():
                                     pred = self.forward(x)
@@ -1634,15 +1629,16 @@ elif selection == "🤖 AI 모델 테스팅":
 
                      # 3. Initialize Model
                      model = TransformerModel(
-                         d_feat=conf.get('d_feat', 20), # Fallback 20
+                         d_feat=conf.get('d_feat', 20), 
                          d_model=conf.get('d_model', 64),
                          nhead=conf.get('nhead', 8),
                          num_layers=conf.get('num_layers', 2),
-                         device='cpu' # Force CPU for Inference
+                         device='cpu' 
                      )
                      
                      # 4. Load Weights
-                     model.load_state_dict(torch.load(selected_ver['path'], map_location=torch.device('cpu')))
+                     # [Fix] strict=False to ignore 'encoder_layer.*' keys which are unused prototype layers in Qlib
+                     model.load_state_dict(torch.load(selected_ver['path'], map_location=torch.device('cpu')), strict=False)
                      model.eval()
                      
                      # 5. Wrap as standard object
