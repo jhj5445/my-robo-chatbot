@@ -99,7 +99,7 @@ def calculate_feature_set(df, feature_level):
     feature_cols = []
 
     # 0. Alpha158 (Qlib Exact Match)
-    if feature_level == "Alpha158" or feature_level == "Qlib":
+    if "Alpha158" in feature_level:
         if AlphaFactory:
             alpha_df = AlphaFactory.get_alpha158(df)
             # Merge alphas back to df
@@ -1133,7 +1133,7 @@ elif selection == "🤖 AI 모델 테스팅":
             # Feature 복잡도 선택
             feature_level = st.radio(
                 "Feature 복잡도 (AI 지능)", 
-                ["Light (5개 - 속도 중심)", "Standard (22개 - 균형)", "Rich (50+개 - 정밀 분석)"],
+                ["Light (5개 - 속도 중심)", "Standard (22개 - 균형)", "Rich (50+개 - 정밀 분석)", "Alpha158 (Qlib - Pro)"],
                 index=1
             )
             
