@@ -1911,7 +1911,7 @@ elif selection == "🤖 AI 모델 테스팅":
                             score = pred_res # Assume simple float
                     
                     # Debug Score
-                    # st.write(f"{ticker} Score: {score}")
+                    st.write(f"{ticker} Score: {score} (Type: {type(score)})")
                         
                     recommendations.append({
                         "종목코드": ticker,
@@ -1920,7 +1920,7 @@ elif selection == "🤖 AI 모델 테스팅":
                         "기준일": last_row.index[-1].strftime('%Y-%m-%d')
                     })
                 except Exception as e:
-                    # st.error(f"Inference Logic Error for {ticker}: {e}")
+                    st.error(f"Inference Logic Error for {ticker}: {e}")
                     pass
             
             # -----------------------------------------------------------------------------
