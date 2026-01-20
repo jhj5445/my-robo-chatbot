@@ -55,13 +55,17 @@ from sklearn.metrics import mean_squared_error
 # -----------------------------------------------------------------------------
 # Helper Functions (Moved to Top for Scope Safety)
 # -----------------------------------------------------------------------------
-# -----------------------------------------------------------------------------
 import pickle
 try:
     import stats_helper # Custom Helper
 except ImportError:
-    pass # fallback or handle if missing
+    pass 
 
+# Impor Alpha Provider
+try:
+    from alpha_provider import AlphaFactory
+except ImportError:
+    AlphaFactory = None
 
 MODEL_SAVE_DIR = "saved_models"
 if not os.path.exists(MODEL_SAVE_DIR):
@@ -70,10 +74,7 @@ if not os.path.exists(MODEL_SAVE_DIR):
 def save_model_checkpoint(model_name, data):
     try:
         filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
-        
-        # Windows filename safety
         filepath = filepath.replace(":", "-").replace("|", "_")
-        
         with open(filepath, "wb") as f:
             pickle.dump(data, f)
         return True
@@ -94,7 +95,26 @@ def load_model_checkpoint(model_name):
 def calculate_feature_set(df, feature_level):
     df = df.copy()
     feature_cols = []
-    
+
+    # 0. Alpha158 (Qlib Exact Match)
+    if feature_level == "Alpha158" or feature_level == "Qlib":
+        if AlphaFactory:
+            alpha_df = AlphaFactory.get_alpha158(df)
+            # Merge alphas back to df
+            # alpha_df index is MultiIndex (Date, Ticker) or matches df index
+            # If df is single ticker, alpha_df might have MultiIndex.
+            # Align indices
+            if isinstance(alpha_df.index, pd.MultiIndex) and not isinstance(df.index, pd.MultiIndex):
+                 # Drop ticker level if single ticker
+                 alpha_df = alpha_df.reset_index(level=1, drop=True)
+            
+            # Join columns
+            df = df.join(alpha_df, rsuffix='_alpha') # safety
+            feature_cols = alpha_df.columns.tolist()
+            return df, feature_cols
+        else:
+            print("AlphaFactory not found, falling back to Rich")
+
     # 1. Light (Basic 5)
     if "Light" in feature_level:
         df['MA5'] = df['Close'].rolling(window=5).mean()
@@ -1755,11 +1775,40 @@ elif selection == "🤖 AI 모델 테스팅":
                     df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
                     df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                     
+                    # [Auto-Detect] Alpha158 Requirement
+                    target_level = loaded_model_data.get('feature_level', 'Standard')
+                    expected_dim = getattr(model, 'd_feat', None)
+                    if expected_dim == 158:
+                         target_level = "Alpha158"
+                         if i==0: st.toast("🧪 Alpha158 Features Auto-Detected & Applied", icon="⚡")
+                    
                     # Feature Engineer
-                    df, _ = calculate_feature_set(df, loaded_model_data.get('feature_level', 'Standard'))
+                    df, _ = calculate_feature_set(df, target_level)
                     
                     # [Fix] Auto-detect feature columns if missing (for PyTorch models)
                     if not feature_cols:
+                         # For Alpha158, the function returns cols.
+                         # If calculate_feature_set returned cols, use them.
+                         # But wait, calculate_feature_set returns (df, cols).
+                         # We captured it in _. Wait, code above says: df, _ = ...
+                         # We MUST capture feature_cols!
+                         pass # handled below
+                         
+                    # Re-retrieve feature_cols from calculation if needed
+                    # Note: calculate_feature_set returns (df, feature_cols)
+                    # We should use that value.
+                    
+                    # Let's fix the call signature interaction
+                    df, computed_cols = calculate_feature_set(df, target_level)
+                    if not feature_cols:
+                        feature_cols = computed_cols
+                        loaded_model_data['feature_cols'] = feature_cols
+                    else:
+                        # Validation: if dimension differs, prefer computed
+                        if len(feature_cols) != len(computed_cols) and len(computed_cols) == 158:
+                             feature_cols = computed_cols
+                    
+                    # Drop NaN
                          feature_cols = [c for c in df.columns if c not in ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']]
                          loaded_model_data['feature_cols'] = feature_cols
                     
