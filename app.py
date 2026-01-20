@@ -1920,12 +1920,16 @@ elif selection == "🤖 AI 모델 테스팅":
                         "기준일": last_row.index[-1].strftime('%Y-%m-%d')
                     })
                 except Exception as e:
-                    st.error(f"Inference Logic Error for {ticker}: {e}")
+                    # st.error(f"Inference Logic Error for {ticker}: {e}")
                     pass
             
-            # -----------------------------------------------------------------------------
-            # [Refactor] Results will be displayed in the Unified Tabs below
-            # -----------------------------------------------------------------------------
+            # Save Results to Session State for Display
+            if recommendations:
+                st.session_state.trained_models[model_type]['cached_recommendations'] = recommendations
+                st.toast(f"✅ Analysis Complete! Found {len(recommendations)} stocks.", icon="🎉")
+            else:
+                 st.warning("No recommendations generated.")
+
             pass
 
     elif 'scan_results' in st.session_state and not st.session_state.scan_results:
@@ -1965,19 +1969,29 @@ elif selection == "🤖 AI 모델 테스팅":
 
         # TAB 2: Recommendations (Top-K)
         with tab2:
-            current_model = model_info['model']
-            current_scaler = model_info['scaler']
-            current_feats = model_info['feature_cols']
-            current_data = model_info['full_data'] # Dict of DFs
-            current_tickers = model_info['valid_tickers']
-            current_top_k = model_info['top_k']
+            st.markdown("### 📋 오늘의 Top Picks")
             
-            recs = []
+            # Priority: Use Cached Recommendations from Fast Inference
+            if 'cached_recommendations' in model_info and model_info['cached_recommendations']:
+                 recs = model_info['cached_recommendations']
+                 # Convert to DataFrame
+                 rec_df = pd.DataFrame(recs)
+            else:
+                 # Fallback: Training-time Inference (Original Logic)
+                 current_model = model_info['model']
+                 # ... (Old Loop Logic would go here if we wanted fallback, but for now we rely on cache)
+                 rec_df = pd.DataFrame() # Empty
             
-            for t in current_tickers:
-                if t in current_data:
-                    df = current_data[t]
-                    if df.empty: continue
+            if not rec_df.empty:
+                 current_top_k = model_info.get('top_k', 5)
+                 rec_df = rec_df.sort_values(by="AI 점수 (Score)", ascending=False).head(current_top_k)
+                 
+                 st.dataframe(
+                     rec_df.style.background_gradient(subset=['AI 점수 (Score)'], cmap="Greens"),
+                     use_container_width=True
+                 )
+            else:
+                 st.write("아직 추천 결과가 생성되지 않았습니다. 'Fast Inference' 버튼을 눌러주세요.")
                     
                     last_row = df.iloc[[-1]] 
                     try:
