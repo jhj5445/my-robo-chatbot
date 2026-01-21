@@ -1743,12 +1743,11 @@ elif selection == "🤖 AI 모델 테스팅":
         col_act1, col_act2 = st.columns([3, 1])
         
         with col_act2:
-             # Delete Button
              if st.button("🗑️ 모델 삭제 (Delete)", type="primary"):
                  try:
                      os.remove(selected_ver['path'])
                      st.toast("✅ 모델 파일이 삭제되었습니다.")
-                     st.experimental_rerun()
+                     st.rerun()
                  except Exception as e:
                      st.error(f"삭제 실패: {e}")
 
