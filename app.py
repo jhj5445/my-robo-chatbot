@@ -1714,15 +1714,48 @@ elif selection == "🤖 AI 모델 테스팅":
     if loaded_model_data:
         saved_ts = loaded_model_data.get('timestamp', 'Unknown')
         
+        # [UX Improvement] Pre-Inference Model Specs
+        st.info("ℹ️ 선택된 모델 상세 정보 (Model Specs)")
+        spec_col1, spec_col2 = st.columns(2)
+        with spec_col1:
+            st.write(f"**🔹 모델 타입**: {loaded_model_data.get('model_type')}")
+            st.write(f"**🔹 예측 기간 (Horizon)**: {loaded_model_data.get('horizon')}")
+            st.write(f"**🔹 학습 기간**: {loaded_model_data.get('train_period', 'Unknown')}")
+        
+        with spec_col2:
+            feat_lvl = loaded_model_data.get('feature_level', 'Unknown')
+            feat_cnt = len(loaded_model_data.get('feature_cols', []))
+            st.write(f"**🔹 Feature 복잡도**: {feat_lvl} ({feat_cnt} features)")
+            univ_size = len(loaded_model_data.get('valid_tickers', []))
+            st.write(f"**🔹 학습 유니버스 크기**: {univ_size}개 종목")
+            st.write(f"**🔹 저장 일시**: {saved_ts}")
+            
+        st.divider()
+
         # [UX Improvement] Add Top-K slider specific for Inference here
         st.write("#### ⚙️ 추론 설정 (Inference Settings)")
         top_k_inference = st.slider("추천할 종목 수 (Top K)", min_value=1, max_value=50, value=10, key="top_k_inf")
         
         # [Fix] Robust feature level retrieval
         feat_level = loaded_model_data.get('feature_level', 'Standard')
+        
+        # Action Buttons (Inference & Delete)
+        col_act1, col_act2 = st.columns([3, 1])
+        
+        with col_act2:
+             # Delete Button
+             if st.button("🗑️ 모델 삭제 (Delete)", type="primary"):
+                 try:
+                     os.remove(selected_ver['path'])
+                     st.toast("✅ 모델 파일이 삭제되었습니다.")
+                     st.experimental_rerun()
+                 except Exception as e:
+                     st.error(f"삭제 실패: {e}")
 
-        if st.button("⚡ 선택된 모델로 바로 분석 (Fast Inference)"):
-            # Inject Backtest Data for Analysis Tab
+        with col_act1:
+            run_inference = st.button("⚡ 선택된 모델로 바로 분석 (Fast Inference)", type="primary")
+
+        if run_inference:
             # Inject Backtest Data for Analysis Tab
             if 'backtest_data' in loaded_model_data:
                  st.session_state.trained_models[model_type] = loaded_model_data
