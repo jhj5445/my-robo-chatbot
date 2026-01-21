@@ -1514,7 +1514,7 @@ elif selection == "🤖 AI 모델 테스팅":
             today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
             
             # [Added] Training Period in Filename (Year Only)
-            period_str = f"{train_start_date.year}-{backtest_start_date.year}"
+            period_str = f"{train_start.year}-{test_start.year}"
             
             file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{period_str}_{today_str}"
             
