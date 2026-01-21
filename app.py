@@ -1220,6 +1220,7 @@ elif selection == "🤖 AI 모델 테스팅":
             
             full_data = {}
             valid_tickers = []
+            feature_cols = [] # [Fix] Initialize feature_cols
             
             # 전체 기간 설정
             end_date = pd.to_datetime("today")
