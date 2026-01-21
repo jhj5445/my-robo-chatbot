@@ -97,21 +97,61 @@ def load_model_checkpoint(model_name):
         print(f"Error loading model: {e}")
     return None
 
-# Helper: Get SPY MA200 for Regime Filter
+# Helper: Get Macro Data (VIX, Rates, SPY) & Regime
 @st.cache_data(ttl=3600*12)
-def get_market_regime_data():
+def get_macro_data():
     try:
-        spy = yf.download("SPY", period="20y", progress=False)
-        if isinstance(spy.columns, pd.MultiIndex):
-            spy.columns = spy.columns.get_level_values(0)
-        spy['MA200'] = spy['Close'].rolling(window=200).mean()
-        spy['Regime'] = np.where(spy['Close'] > spy['MA200'], 1, 0) # 1=Bull, 0=Bear
-        return spy[['Close', 'MA200', 'Regime']]
+        # Download VIX, 10Y Treasury, SPY
+        tickers = ["^VIX", "^TNX", "SPY"]
+        data = yf.download(tickers, period="20y", progress=False)['Close']
+        
+        # Handle MultiIndex
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0) # Simplify
+            
+        # Rename for clarity
+        data = data.rename(columns={
+            "^VIX": "Macro_VIX", 
+            "^TNX": "Macro_US10Y",
+            "SPY": "Macro_SPY"
+        })
+        
+        # Fill missing (different holidays)
+        data = data.ffill().dropna()
+        
+        # Calculate Regime (for Filter)
+        data['MA200'] = data['Macro_SPY'].rolling(window=200).mean()
+        data['Regime'] = np.where(data['Macro_SPY'] > data['MA200'], 1, 0) # 1=Bull
+        
+        # Calculate Macro Features (for AI)
+        data['Macro_SPY_ROC'] = data['Macro_SPY'].pct_change(20) # Market Momentum
+        
+        return data
     except Exception as e:
-        print(f"Regime Data Error: {e}")
+        print(f"Macro Data Error: {e}")
         return pd.DataFrame()
 
-def calculate_feature_set(df, feature_level):
+def calculate_feature_set(df, feature_level, macro_data=None):
+    df = df.copy()
+    feature_cols = []
+    
+    # [NEW] Merge Macro Data if provided
+    if macro_data is not None:
+        # Left Join on Date Index
+        original_rows = len(df)
+        df = df.join(macro_data[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']], how='left')
+        
+        # [Fix] Shift Macro Features by 1 day (Use Yesterday's Macro to predict)
+        # Prevents Look-Ahead Bias if running intraday
+        df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].shift(1)
+        
+        # Fill NaNs (for the very first day or missing days)
+        df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].ffill()
+        
+        # Add to features
+        feature_cols.extend(['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC'])
+    
+    # 0. Alpha158 (Qlib Exact Match)
     df = df.copy()
     feature_cols = []
 
@@ -1171,420 +1211,433 @@ elif selection == "🤖 AI 모델 테스팅":
         status_text = st.empty()
         progress_bar = st.progress(0)
         
-        # A. 데이터 수집 및 피처 엔지니어링
-        status_text.text("데이터 다운로드 및 피처 생성 중...")
-        
-        full_data = {}
-        valid_tickers = []
-        
-        # 전체 기간 설정
-        end_date = pd.to_datetime("today")
-        
-        for i, ticker in enumerate(tickers):
-            try:
-                # 넉넉하게 받아서 이평선 계산 (Rich 모드일 경우 더 많이 필요할 수 있음)
-                if "Alpha158" in feature_level:
-                    lookback_days = 365 # Alpha158 requires long history
-                else:
-                    lookback_days = 200 if "Rich" in feature_level else 100
-                df = yf.download(ticker, start=train_start - pd.Timedelta(days=lookback_days), end=end_date, progress=False)
-                
-                # MultiIndex 처리
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
-                # 컬럼 보정
-                if 'Adj Close' not in df.columns:
-                    if 'Close' in df.columns:
-                        df['Adj Close'] = df['Close']
+        try:
+            # A. 데이터 준비
+            status_text.text("데이터 다운로드 및 전처리 중...")
+            
+            # [NEW] Fetch Macro Data Once
+            macro_df = get_macro_data()
+            
+            full_data = {}
+            valid_tickers = []
+            
+            # 전체 기간 설정
+            end_date = pd.to_datetime("today")
+            
+            # 병렬 처리 또는 루프
+            for i, ticker in enumerate(tickers):
+                try:
+                    # 넉넉하게 받아서 이평선 계산 (Rich 모드일 경우 더 많이 필요할 수 있음)
+                    if "Alpha158" in feature_level:
+                        lookback_days = 365 # Alpha158 requires long history
                     else:
-                        continue
-                
-                df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
-                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] 
-                
-                # [Fix] Ensure no NaNs before feature calc (Alpha158 polyfit fails on NaNs)
-                df.dropna(inplace=True)
-
-                # ---------------- [Feature Engineering (Refactored)] ----------------
-                df, feature_cols = calculate_feature_set(df, feature_level)
-
-                # Label (Target): 다음날 수익률 or 2주 후 수익률
-                if "2 Weeks" in horizon_option:
-                    # 10거래일 후의 수익률 (2주)
-                    df['Next_Return'] = df['Close'].pct_change(10).shift(-10)
-                else:
-                    # 1일 후 (단기)
-                    df['Next_Return'] = df['Close'].pct_change().shift(-1)
-                
-                df.dropna(inplace=True)
-                
-                if not df.empty:
-                    full_data[ticker] = df
-                    valid_tickers.append(ticker)
+                        lookback_days = 200 if "Rich" in feature_level else 100
+                    raw_df = yf.download(ticker, start=train_start - pd.Timedelta(days=lookback_days), end=end_date, progress=False)
                     
-            except Exception as e:
-                # [Debug] Show error for first few tickers to diagnose
-                if i < 3: st.warning(f"⚠️ {ticker} 처리 실패: {e}")
-                pass
-            
-            progress_bar.progress((i + 1) / len(tickers) * 0.3)
+                    # MultiIndex 처리
+                    if isinstance(raw_df.columns, pd.MultiIndex):
+                        raw_df.columns = raw_df.columns.get_level_values(0)
+                    
+                    # 컬럼 보정
+                    if 'Adj Close' not in raw_df.columns:
+                        if 'Close' in raw_df.columns:
+                            raw_df['Adj Close'] = raw_df['Close']
+                        else:
+                            continue
+                    
+                    raw_df = raw_df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
+                    raw_df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] 
+                    
+                    # [Fix] Ensure no NaNs before feature calc (Alpha158 polyfit fails on NaNs)
+                    raw_df.dropna(inplace=True)
 
-        if not valid_tickers:
-            st.error("유효한 데이터가 없습니다.")
-            st.stop()
-            
-        # B. 모델 학습
-        status_text.text(f"{model_type} 모델 학습 중 (Features: {len(feature_cols)}개)...")
-        
-        # 전체 데이터를 하나의 학습셋으로 병합 (Global Model)
-        X_train_all = []
-        y_train_all = []
-        
-        # feature_cols는 위에서 자동 생성됨
-        
-        test_datasets = {} 
-        
-        for ticker in valid_tickers:
-            df = full_data[ticker]
-            train_mask = df.index < pd.to_datetime(test_start)
-            test_mask = df.index >= pd.to_datetime(test_start)
-            
-            train_df = df[train_mask]
-            test_df = df[test_mask]
-            
-            if not train_df.empty:
-                X_train_all.append(train_df[feature_cols].values)
-                y_train_all.append(train_df['Next_Return'].values)
-            
-            if not test_df.empty:
-                test_datasets[ticker] = test_df
-        
-        if not X_train_all:
-            st.error("학습 데이터가 부족합니다 기간을 늘려주세요.")
-            st.stop()
-            
-        X_train = np.concatenate(X_train_all)
-        y_train = np.concatenate(y_train_all)
-        
-        # Scaling
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        
-        # Model Fitting
-        if "Ensemble" in model_type:
-             # 앙상블 모델 학습
-            st.info("⭐ 앙상블 모드: 3가지 모델(Linear, LightGBM, SVM)을 모두 학습합니다...")
-            
-            # 1. Linear
-            model_lin = LinearRegression()
-            model_lin.fit(X_train_scaled, y_train)
-            
-            # 2. LightGBM
-            try:
-                import lightgbm as lgb
-                model_lgb = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, random_state=42)
-                model_lgb.fit(X_train_scaled, y_train)
-            except ImportError:
-                st.warning("LightGBM not installed. Using Linear instead.")
-                model_lgb = model_lin
+                    # ---------------- [Feature Engineering (Refactored)] ----------------
+                    df, cols = calculate_feature_set(raw_df, feature_level, macro_data=macro_df)
+                    
+                    # [Fix] Capture feature_cols from the first successful ticker
+                    if not feature_cols:
+                         feature_cols = cols
+                    
+                    # Label (Target): 다음날 수익률 or 2주 후 수익률
+                    if "2 Weeks" in horizon_option:
+                        # 10거래일 후의 수익률 (2주)
+                        df['Next_Return'] = df['Close'].pct_change(10).shift(-10)
+                    else:
+                        # 1일 후 (단기)
+                        df['Next_Return'] = df['Close'].pct_change().shift(-1)
+                    
+                    df.dropna(inplace=True)
+                    
+                    if not df.empty:
+                        full_data[ticker] = df
+                        valid_tickers.append(ticker)
+                        
+                except Exception as e:
+                    # [Debug] Show error for first few tickers to diagnose
+                    if i < 3: st.warning(f"⚠️ {ticker} 처리 실패: {e}")
+                    pass
+                
+                progress_bar.progress((i + 1) / len(tickers) * 0.3)
 
-            # 3. SVM (SVR)
-            from sklearn.svm import SVR
-            # 데이터가 너무 많으면 SVR은 느림. 샘플링하거나 LinearSVR 사용
-            if len(X_train) > 5000:
-                from sklearn.svm import LinearSVR
-                model_svr = LinearSVR(random_state=42, max_iter=1000)
-            else:
-                model_svr = SVR(kernel='rbf')
+            if not valid_tickers:
+                st.error("유효한 데이터가 없습니다.")
+                st.stop()
+                
+            # B. 모델 학습
+            status_text.text(f"{model_type} 모델 학습 중 (Features: {len(feature_cols)}개)...")
             
-            model_svr.fit(X_train_scaled, y_train)
+            # 전체 데이터를 하나의 학습셋으로 병합 (Global Model)
+            X_train_all = []
+            y_train_all = []
             
-            # 앙상블은 3개 모델 딕셔너리로 저장
-            model = {
-                "Linear": model_lin,
-                "LightGBM": model_lgb,
-                "SVM": model_svr
-            }
-
-        elif "Linear" in model_type:
-            model = LinearRegression()
-            model.fit(X_train_scaled, y_train)
-        elif "SVM" in model_type:
-            if len(X_train) > 10000:
-                st.warning("데이터가 많아 SVM 학습 속도가 느릴 수 있습니다.")
-            model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
-            model.fit(X_train_scaled, y_train)
-        elif "LightGBM" in model_type:
-            import lightgbm as lgb
-            model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
-            model.fit(X_train_scaled, y_train)
+            # feature_cols는 위에서 자동 생성됨
             
-        progress_bar.progress(0.7)
-        
-        # C. 예측 및 백테스팅 (Dynamic Top-K)
-        status_text.text(f"백테스팅 시뮬레이션 중 (Top {top_k_select})...")
-        
-        # 앙상블 예측 함수
-        def predict_ensemble(models, X):
-            p1 = models["Linear"].predict(X)
-            p2 = models["LightGBM"].predict(X)
-            p3 = models["SVM"].predict(X)
-            # 단순 평균
-            return (p1 + p2 + p3) / 3
-
-        # Prepare Regime Data
-        spy_regime = get_market_regime_data() if use_regime_filter else pd.DataFrame()
-
-        all_test_dates = sorted(list(set().union(*[d.index for d in test_datasets.values()])))
-        
-        # Holding Period Check
-        holding_period = 10 if "2 Weeks" in horizon_option else 1
-        rebalance_dates = all_test_dates[::holding_period]
-        
-        # 진행상황용
-        total_steps = len(rebalance_dates) - 1
-        
-        cum_ret_model = 1.0
-        cum_ret_bench = 1.0
-        
-        plot_dates = []
-        plot_model = []
-        plot_bench = []
-        
-        for i in range(total_steps):
-            curr_date = rebalance_dates[i]
-            next_date = rebalance_dates[i+1] # 다음 리밸런싱 날짜
-            
-            # 현재 시점 데이터로 예측
-            candidates = []
+            test_datasets = {} 
             
             for ticker in valid_tickers:
-                if ticker in test_datasets and curr_date in test_datasets[ticker].index:
-                    df = test_datasets[ticker]
-                    row = df.loc[curr_date]
-                    
-                    # Feature
-                    feats = row[feature_cols].values.reshape(1, -1)
-                    feats_scaled = scaler.transform(feats)
-                    
-                    # Score
-                    if isinstance(model, dict): # Ensemble
-                        score = predict_ensemble(model, feats_scaled)[0]
-                    else:
-                        score = model.predict(feats_scaled)[0]
-
-                    # Actual Return (curr_date -> next_date)
-                    actual_ret = 0.0
-                    try:
-                        p_start = df.loc[curr_date, 'Close']
-                        # next_date가 없으면 그 미래 어딘가.. nearest?
-                        # 단순화: next_date가 존재하면 씀. 아니면 마지막.
-                        if next_date in df.index:
-                            p_end = df.loc[next_date, 'Close']
-                        else:
-                            # next_date가 df범위를 벗어날 수도 있음 (개별 종목 상폐 등)
-                            # rebalance_date logic is global, but individual ticker might end early.
-                            sub_df = df.loc[curr_date:]
-                            if not sub_df.empty:
-                                p_end = sub_df.iloc[-1]['Close']
-                            else:
-                                p_end = p_start
-                        
-                        actual_ret = (p_end / p_start) - 1
-                    except:
-                        actual_ret = 0.0
-
-                    candidates.append({
-                        "ticker": ticker,
-                        "score": score,
-                        "ret": actual_ret
-                    })
-            
-            if not candidates:
-                continue
+                df = full_data[ticker]
+                train_mask = df.index < pd.to_datetime(test_start)
+                test_mask = df.index >= pd.to_datetime(test_start)
                 
-            # Score 기준 정렬
-            candidates.sort(key=lambda x: x['score'], reverse=True)
+                train_df = df[train_mask]
+                test_df = df[test_mask]
+                
+                if not train_df.empty:
+                    X_train_all.append(train_df[feature_cols].values)
+                    y_train_all.append(train_df['Next_Return'].values)
+                
+                if not test_df.empty:
+                    test_datasets[ticker] = test_df
             
-            # Top-K
-            picks = candidates[:top_k_select]
+            if not X_train_all:
+                st.error("학습 데이터가 부족합니다 기간을 늘려주세요.")
+                st.stop()
+                
+            X_train = np.concatenate(X_train_all)
+            y_train = np.concatenate(y_train_all)
             
-            # 수익률 계산 (Equal Weight)
-            raw_period_ret = sum([p['ret'] for p in picks]) / len(picks) if picks else 0.0
+            # Scaling
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
             
-            # [Transaction Cost] 0.1% (0.001) per rebalance
-            cost = 0.001
-            period_ret = raw_period_ret - cost
-            
-            # [Regime Filter Logic]
-            if use_regime_filter and not spy_regime.empty:
-                # Check regime at curr_date
-                # Find closest date in spy_regime <= curr_date
+            # Model Fitting
+            if "Ensemble" in model_type:
+                 # 앙상블 모델 학습
+                st.info("⭐ 앙상블 모드: 3가지 모델(Linear, LightGBM, SVM)을 모두 학습합니다...")
+                
+                # 1. Linear
+                model_lin = LinearRegression()
+                model_lin.fit(X_train_scaled, y_train)
+                
+                # 2. LightGBM
                 try:
-                    # Using 'asof' logic or exact match
-                    if curr_date in spy_regime.index:
-                        is_bull = spy_regime.loc[curr_date, 'Regime']
-                    else:
-                        # Fallback to nearest past
-                        idx = spy_regime.index.get_indexer([curr_date], method='pad')[0]
-                        if idx != -1:
-                            is_bull = spy_regime.iloc[idx]['Regime']
-                        else:
-                            is_bull = 1 # Default to Bull if no data
-                    
-                    if is_bull == 0: # Bear Market
-                         period_ret = 0.0 # Hold Cash (Assume 0% interest for simplicity, or Risk Free Rate)
-                         # Optionally we could add small risk-free rate here
-                except Exception as e:
-                    pass # Fallback to normal
+                    import lightgbm as lgb
+                    model_lgb = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, random_state=42)
+                    model_lgb.fit(X_train_scaled, y_train)
+                except ImportError:
+                    st.warning("LightGBM not installed. Using Linear instead.")
+                    model_lgb = model_lin
 
-            
-            # Benchmark (Equal Weight of Universe)
-            bench_ret = sum([p['ret'] for p in candidates]) / len(candidates) if candidates else 0.0
-            
-            # 누적
-            cum_ret_model *= (1 + period_ret)
-            cum_ret_bench *= (1 + bench_ret)
-            
-            plot_dates.append(next_date)
-            plot_model.append(cum_ret_model)
-            plot_bench.append(cum_ret_bench)
-            
-        progress_bar.progress(1.0)
-        status_text.empty()
-        
-        # D. 결과 저장 (Session State)
-        st.session_state.trained_models[model_type] = {
-            "model": model,
-            "scaler": scaler,
-            "feature_cols": feature_cols,
-            "full_data": full_data,
-            "valid_tickers": valid_tickers,
-            "top_k": top_k_select,
-            "feature_level": feature_level,
-            "horizon": horizon_option # 저장
-        }
-        
-        # E. 결과 시각화
-        # E. 결과 시각화 & SPY Benchmark
-        # SPY 데이터 가져오기
-        plot_spy = [1.0] * len(plot_dates)
-        try:
-            spy_df = yf.download("SPY", start=plot_dates[0], end=pd.to_datetime(plot_dates[-1]) + pd.Timedelta(days=5), progress=False)
-            if isinstance(spy_df.columns, pd.MultiIndex): spy_df.columns = spy_df.columns.get_level_values(0)
-            target_col = 'Adj Close' if 'Adj Close' in spy_df.columns else 'Close'
-            
-            valid_dt = spy_df.index.asof(plot_dates[0])
-            if pd.notna(valid_dt):
-                base_price = spy_df.loc[valid_dt, target_col]
-                temp_spy = []
-                for d in plot_dates:
-                    v_dt = spy_df.index.asof(d)
-                    if pd.notna(v_dt):
-                        temp_spy.append(spy_df.loc[v_dt, target_col] / base_price)
-                    else:
-                        temp_spy.append(1.0)
-                plot_spy = temp_spy
-        except:
-            pass
-
-        results_df = pd.DataFrame({
-            "Date": plot_dates,
-            "Strategy (AI)": plot_model,
-            "S&P 500 (SPY)": plot_spy,
-            "Benchmark (Equal)": plot_bench
-        }).set_index("Date")
-        
-        st.success(f"학습 완료! ({model_type}) - Horizon: {horizon_option}, Top-{top_k_select}")
-        
-        # Prepare Backtest Data Dict for Saving
-        backtest_data_to_save = {}
-        
-        if results_df.empty:
-            st.warning("⚠️ 백테스트 기간 동안 매매 신호가 발생하지 않았거나 데이터가 부족하여 결과 그래프를 그릴 수 없습니다.")
-        else:
-            total_ret = results_df['Strategy (AI)'].iloc[-1] - 1
-            spy_ret = results_df['S&P 500 (SPY)'].iloc[-1] - 1
-            eq_ret = results_df['Benchmark (Equal)'].iloc[-1] - 1
-            
-            backtest_data_to_save = {
-                "perf_df": results_df,
-                "metrics": {
-                    "Total Return": f"{total_ret:.2%}",
-                    "SPY Return": f"{spy_ret:.2%}",
-                    "EQ Return": f"{eq_ret:.2%}"
+                # 3. SVM (SVR)
+                from sklearn.svm import SVR
+                # 데이터가 너무 많으면 SVR은 느림. 샘플링하거나 LinearSVR 사용
+                if len(X_train) > 5000:
+                    from sklearn.svm import LinearSVR
+                    model_svr = LinearSVR(random_state=42, max_iter=1000)
+                else:
+                    model_svr = SVR(kernel='rbf')
+                
+                model_svr.fit(X_train_scaled, y_train)
+                
+                # 앙상블은 3개 모델 딕셔너리로 저장
+                model = {
+                    "Linear": model_lin,
+                    "LightGBM": model_lgb,
+                    "SVM": model_svr
                 }
-            }
 
-            c1, c2, c3 = st.columns(3)
-            c1.metric("AI 포트폴리오 수익률 (Cost 0.1%)", f"{total_ret:.2%}")
-            c2.metric("S&P 500 수익률", f"{spy_ret:.2%}")
-            c3.metric("동일 비중 (Equal)", f"{eq_ret:.2%}")
+            elif "Linear" in model_type:
+                model = LinearRegression()
+                model.fit(X_train_scaled, y_train)
+            elif "SVM" in model_type:
+                if len(X_train) > 10000:
+                    st.warning("데이터가 많아 SVM 학습 속도가 느릴 수 있습니다.")
+                model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+                model.fit(X_train_scaled, y_train)
+            elif "LightGBM" in model_type:
+                import lightgbm as lgb
+                model = lgb.LGBMRegressor(n_estimators=100, learning_rate=0.05, num_leaves=31, random_state=42, verbose=-1)
+                model.fit(X_train_scaled, y_train)
+                
+            progress_bar.progress(0.7)
             
-            st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
-            # st.line_chart(results_df) # Moved to Tab View
+            # C. 예측 및 백테스팅 (Dynamic Top-K)
+            status_text.text(f"백테스팅 시뮬레이션 중 (Top {top_k_select})...")
+            
+            # 앙상블 예측 함수
+            def predict_ensemble(models, X):
+                p1 = models["Linear"].predict(X)
+                p2 = models["LightGBM"].predict(X)
+                p3 = models["SVM"].predict(X)
+                # 단순 평균
+                return (p1 + p2 + p3) / 3
 
-        # [Persistence Save] (Executed regardless of backtest result)
-        try:
-            # 앙상블은 모델 구조가 다르므로 저장 방식 유의
-            model_data_to_save = {
-                "model_type": model_type,
+            # Prepare Regime Data (Re-use macro_df from earlier)
+            # macro_df already calculated
+            
+            all_test_dates = sorted(list(set().union(*[d.index for d in test_datasets.values()])))
+            
+            # Holding Period Check
+            holding_period = 10 if "2 Weeks" in horizon_option else 1
+            rebalance_dates = all_test_dates[::holding_period]
+            
+            # 진행상황용
+            total_steps = len(rebalance_dates) - 1
+            
+            cum_ret_model = 1.0
+            cum_ret_bench = 1.0
+            
+            plot_dates = []
+            plot_model = []
+            plot_bench = []
+            
+            for i in range(total_steps):
+                curr_date = rebalance_dates[i]
+                next_date = rebalance_dates[i+1] # 다음 리밸런싱 날짜
+                
+                # 현재 시점 데이터로 예측
+                candidates = []
+                
+                for ticker in valid_tickers:
+                    if ticker in test_datasets and curr_date in test_datasets[ticker].index:
+                        df = test_datasets[ticker]
+                        row = df.loc[curr_date]
+                        
+                        # Feature
+                        feats = row[feature_cols].values.reshape(1, -1)
+                        feats_scaled = scaler.transform(feats)
+                        
+                        # Score
+                        if isinstance(model, dict): # Ensemble
+                            score = predict_ensemble(model, feats_scaled)[0]
+                        else:
+                            score = model.predict(feats_scaled)[0]
+
+                        # Actual Return (curr_date -> next_date)
+                        actual_ret = 0.0
+                        try:
+                            p_start = df.loc[curr_date, 'Close']
+                            # next_date가 없으면 그 미래 어딘가.. nearest?
+                            # 단순화: next_date가 존재하면 씀. 아니면 마지막.
+                            if next_date in df.index:
+                                p_end = df.loc[next_date, 'Close']
+                            else:
+                                # next_date가 df범위를 벗어날 수도 있음 (개별 종목 상폐 등)
+                                # rebalance_date logic is global, but individual ticker might end early.
+                                sub_df = df.loc[curr_date:]
+                                if not sub_df.empty:
+                                    p_end = sub_df.iloc[-1]['Close']
+                                else:
+                                    p_end = p_start
+                            
+                            actual_ret = (p_end / p_start) - 1
+                        except:
+                            actual_ret = 0.0
+
+                        candidates.append({
+                            "ticker": ticker,
+                            "score": score,
+                            "ret": actual_ret
+                        })
+                
+                if not candidates:
+                    continue
+                    
+                # Score 기준 정렬
+                candidates.sort(key=lambda x: x['score'], reverse=True)
+                
+                # Top-K
+                picks = candidates[:top_k_select]
+                
+                # 수익률 계산 (Equal Weight)
+                raw_period_ret = sum([p['ret'] for p in picks]) / len(picks) if picks else 0.0
+                
+                # [Transaction Cost] 0.1% (0.001) per rebalance
+                cost = 0.001
+                period_ret = raw_period_ret - cost
+                
+                # [Regime Filter Logic]
+                if use_regime_filter and not macro_df.empty:
+                    # Check regime at curr_date
+                    # Find closest date in spy_regime <= curr_date
+                    try:
+                        # Using 'asof' logic or exact match
+                        if curr_date in macro_df.index:
+                            is_bull = macro_df.loc[curr_date, 'Regime']
+                        else:
+                            # Fallback to nearest past
+                            idx = macro_df.index.get_indexer([curr_date], method='pad')[0]
+                            if idx != -1:
+                                is_bull = macro_df.iloc[idx]['Regime']
+                            else:
+                                is_bull = 1 # Default to Bull if no data
+                        
+                        if is_bull == 0: # Bear Market
+                             period_ret = 0.0 # Hold Cash (Assume 0% interest for simplicity, or Risk Free Rate)
+                             # Optionally we could add small risk-free rate here
+                    except Exception as e:
+                        pass # Fallback to normal
+
+                
+                # Benchmark (Equal Weight of Universe)
+                bench_ret = sum([p['ret'] for p in candidates]) / len(candidates) if candidates else 0.0
+                
+                # 누적
+                cum_ret_model *= (1 + period_ret)
+                cum_ret_bench *= (1 + bench_ret)
+                
+                plot_dates.append(next_date)
+                plot_model.append(cum_ret_model)
+                plot_bench.append(cum_ret_bench)
+                
+            progress_bar.progress(1.0)
+            status_text.empty()
+            
+            # D. 결과 저장 (Session State)
+            st.session_state.trained_models[model_type] = {
                 "model": model,
                 "scaler": scaler,
                 "feature_cols": feature_cols,
-                "feature_level": feature_level,
-                "horizon": horizon_option,
-                "top_k": top_k_select,
-                "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "full_data": full_data,
                 "valid_tickers": valid_tickers,
-                "backtest_data": backtest_data_to_save, # Save Performance
-                "train_period": f"{train_start.strftime('%Y-%m-%d')} ~ {pd.to_datetime(test_start).strftime('%Y-%m-%d')}"
+                "top_k": top_k_select,
+                "feature_level": feature_level,
+                "horizon": horizon_option # 저장
             }
             
-            # Update Session State too
-            st.session_state.trained_models[model_type] = model_data_to_save
+            # E. 결과 시각화
+            # E. 결과 시각화 & SPY Benchmark
+            # SPY 데이터 가져오기
+            plot_spy = [1.0] * len(plot_dates)
+            try:
+                spy_df = yf.download("SPY", start=plot_dates[0], end=pd.to_datetime(plot_dates[-1]) + pd.Timedelta(days=5), progress=False)
+                if isinstance(spy_df.columns, pd.MultiIndex): spy_df.columns = spy_df.columns.get_level_values(0)
+                target_col = 'Adj Close' if 'Adj Close' in spy_df.columns else 'Close'
+                
+                valid_dt = spy_df.index.asof(plot_dates[0])
+                if pd.notna(valid_dt):
+                    base_price = spy_df.loc[valid_dt, target_col]
+                    temp_spy = []
+                    for d in plot_dates:
+                        v_dt = spy_df.index.asof(d)
+                        if pd.notna(v_dt):
+                            temp_spy.append(spy_df.loc[v_dt, target_col] / base_price)
+                        else:
+                            temp_spy.append(1.0)
+                    plot_spy = temp_spy
+            except:
+                pass
+
+            results_df = pd.DataFrame({
+                "Date": plot_dates,
+                "Strategy (AI)": plot_model,
+                "S&P 500 (SPY)": plot_spy,
+                "Benchmark (Equal)": plot_bench
+            }).set_index("Date")
             
-            # 파일명: {Model}_{Horizon}_{Feat}_{TopK}_{Date}.pkl
-            # [Fix] Aggressive Sanitization for Windows/Cloud Compatibility
-            def sanitize_filename(s):
-                # Remove emojis, special chars, keep alphanumeric, spaces, hyphens, underscores
-                s = re.sub(r'[^\w\s-]', '', s) # Remove non-word except space/hyphen
-                return s.replace(" ", "")
+            st.success(f"학습 완료! ({model_type}) - Horizon: {horizon_option}, Top-{top_k_select}")
             
-            safe_type = sanitize_filename(model_type)
-            safe_horizon = sanitize_filename(horizon_option)
-            safe_feat = feature_level.split(" ")[0] # Light, Standard, Rich
-            today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
+            # Prepare Backtest Data Dict for Saving
+            backtest_data_to_save = {}
             
-            # [Added] Training Period in Filename (Year Only)
-            period_str = f"{train_start.year}-{test_start.year}"
-            
-            file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{period_str}_{today_str}"
-            
-            save_model_checkpoint(file_name_ver, model_data_to_save)
-            st.toast(f"✅ 모델 자동 저장 완료: {file_name_ver}")
-            
-            # [Download Button for Git Persistence]
-            saved_path = os.path.join(MODEL_SAVE_DIR, f"{file_name_ver}.pkl")
-            
-            st.divider() # Visual separation
-            
-            if os.path.exists(saved_path):
-                # st.success(f"모델 저장 성공: {saved_path}") # Debug feedback
-                with open(saved_path, "rb") as f:
-                    btn = st.download_button(
-                        label=f"📥 모델 파일 다운로드 (.pkl)\n({file_name_ver})",
-                        data=f,
-                        file_name=f"{file_name_ver}.pkl",
-                        mime="application/octet-stream",
-                        help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다.",
-                        use_container_width=True # Make it prominent
-                    )
+            if results_df.empty:
+                st.warning("⚠️ 백테스트 기간 동안 매매 신호가 발생하지 않았거나 데이터가 부족하여 결과 그래프를 그릴 수 없습니다.")
             else:
-                st.error(f"저장된 파일을 찾을 수 없습니다: {saved_path}")
+                total_ret = results_df['Strategy (AI)'].iloc[-1] - 1
+                spy_ret = results_df['S&P 500 (SPY)'].iloc[-1] - 1
+                eq_ret = results_df['Benchmark (Equal)'].iloc[-1] - 1
+                
+                backtest_data_to_save = {
+                    "perf_df": results_df,
+                    "metrics": {
+                        "Total Return": f"{total_ret:.2%}",
+                        "SPY Return": f"{spy_ret:.2%}",
+                        "EQ Return": f"{eq_ret:.2%}"
+                    }
+                }
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("AI 포트폴리오 수익률 (Cost 0.1%)", f"{total_ret:.2%}")
+                c2.metric("S&P 500 수익률", f"{spy_ret:.2%}")
+                c3.metric("동일 비중 (Equal)", f"{eq_ret:.2%}")
+                
+                st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
+                # st.line_chart(results_df) # Moved to Tab View
+
+            # [Persistence Save] (Executed regardless of backtest result)
+            try:
+                # 앙상블은 모델 구조가 다르므로 저장 방식 유의
+                model_data_to_save = {
+                    "model_type": model_type,
+                    "model": model,
+                    "scaler": scaler,
+                    "feature_cols": feature_cols,
+                    "feature_level": feature_level,
+                    "horizon": horizon_option,
+                    "top_k": top_k_select,
+                    "timestamp": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "valid_tickers": valid_tickers,
+                    "backtest_data": backtest_data_to_save, # Save Performance
+                    "train_period": f"{train_start.strftime('%Y-%m-%d')} ~ {pd.to_datetime(test_start).strftime('%Y-%m-%d')}"
+                }
+                
+                # Update Session State too
+                st.session_state.trained_models[model_type] = model_data_to_save
+                
+                # 파일명: {Model}_{Horizon}_{Feat}_{TopK}_{Date}.pkl
+                # [Fix] Aggressive Sanitization for Windows/Cloud Compatibility
+                def sanitize_filename(s):
+                    # Remove emojis, special chars, keep alphanumeric, spaces, hyphens, underscores
+                    s = re.sub(r'[^\w\s-]', '', s) # Remove non-word except space/hyphen
+                    return s.replace(" ", "")
+                
+                safe_type = sanitize_filename(model_type)
+                safe_horizon = sanitize_filename(horizon_option)
+                safe_feat = feature_level.split(" ")[0] # Light, Standard, Rich
+                today_str = pd.Timestamp.now().strftime('%Y-%m-%d')
+                
+                # [Added] Training Period in Filename (Year Only)
+                period_str = f"{train_start.year}-{test_start.year}"
+                
+                file_name_ver = f"{safe_type}_{safe_horizon}_{safe_feat}_Top{top_k_select}_{period_str}_{today_str}"
+                
+                save_model_checkpoint(file_name_ver, model_data_to_save)
+                st.toast(f"✅ 모델 자동 저장 완료: {file_name_ver}")
+                
+                # [Download Button for Git Persistence]
+                saved_path = os.path.join(MODEL_SAVE_DIR, f"{file_name_ver}.pkl")
+                
+                st.divider() # Visual separation
+                
+                if os.path.exists(saved_path):
+                    # st.success(f"모델 저장 성공: {saved_path}") # Debug feedback
+                    with open(saved_path, "rb") as f:
+                        btn = st.download_button(
+                            label=f"📥 모델 파일 다운로드 (.pkl)\n({file_name_ver})",
+                            data=f,
+                            file_name=f"{file_name_ver}.pkl",
+                            mime="application/octet-stream",
+                            help="이 파일을 다운로드 받아 GitHub 'saved_models' 폴더에 커밋하면, Cloud 환경에서도 영구 저장됩니다.",
+                            use_container_width=True # Make it prominent
+                        )
+                else:
+                    st.error(f"저장된 파일을 찾을 수 없습니다: {saved_path}")
+            except Exception as e:
+                st.error(f"모델 저장 실패: {e}")
         except Exception as e:
-            st.error(f"모델 저장 실패: {e}")
+            st.error(f"AI 모델 학습 중 치명적인 오류 발생: {e}")
+            st.stop()
+
 
     # [Fast Inference Button Logic]
     # 모델 학습 버튼 옆에 '저장된 모델 불러오기' 버튼이 있으면 좋겠지만, UI 레이아웃상
@@ -1875,17 +1928,11 @@ elif selection == "🤖 AI 모델 테스팅":
                     # [Auto-Detect] Alpha158 Requirement
                     target_level = loaded_model_data.get('feature_level', 'Standard')
                     expected_dim = getattr(model, 'd_feat', None)
-                    if expected_dim == 158:
+                    if expected_dim and expected_dim == 158: # Check if model expects 158 features
                          target_level = "Alpha158"
                          if i==0: st.toast("🧪 Alpha158 Features Auto-Detected & Applied", icon="⚡")
                     
                     # Feature Engineer
-                    df, _ = calculate_feature_set(df, target_level)
-                    
-                    # [Fix] Auto-detect feature columns if missing (for PyTorch models)
-                    if not feature_cols:
-                         # For Alpha158, the function returns cols.
-                         # If calculate_feature_set returned cols, use them.
                          # But wait, calculate_feature_set returns (df, cols).
                          # We captured it in _. Wait, code above says: df, _ = ...
                          # We MUST capture feature_cols!
@@ -1952,7 +1999,7 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # [Regime Filter Warning]
             if use_regime_filter:
-                regime_df = get_market_regime_data()
+                regime_df = get_macro_data() # Reuse macro function
                 if not regime_df.empty:
                     last_regime = regime_df.iloc[-1]['Regime']
                     if last_regime == 0:
