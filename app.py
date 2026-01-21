@@ -1646,13 +1646,20 @@ elif selection == "🤖 AI 모델 테스팅":
                             self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
                             self.decoder_layer = nn.Linear(d_model, 1)
                             self.device = device
-                            self.d_feat = d_feat
+                            self._d_feat_val = d_feat
                         def forward(self, src):
                             src = self.feature_layer(src)
                             src = self.pos_encoder(src)
                             output = self.transformer_encoder(src)
                             output = self.decoder_layer(output[:, -1, :]) # Use last step
                             return output.squeeze()
+                        # Add d_feat property for auto-detection
+                        @property
+                        def d_feat(self):
+                            return self._d_feat_val
+                        def __init__(self, d_feat, d_model=64, nhead=8, num_layers=2, dropout=0.1, device='cpu'):
+                            super(TransformerModel, self).__init__()
+                            self._d_feat_val = d_feat # Store for property
                         def predict(self, dataset):
                             # Adapter for DataFrame or Numpy
                             val = None
@@ -1928,10 +1935,19 @@ elif selection == "🤖 AI 모델 테스팅":
                     # Debug Score
                     st.write(f"{ticker} Score: {score} (Type: {type(score)})")
                         
+                    # Interpret Score
+                    signal = "Hold (관망)"
+                    if score > 0.01: signal = "Strong Buy (강력 매수) 🚀"
+                    elif score > 0.005: signal = "Buy (매수) 📈"
+                    elif score < -0.01: signal = "Strong Sell (강력 매도) 📉"
+                    elif score < -0.005: signal = "Sell (매도) 🔻"
+                    
                     recommendations.append({
                         "종목코드": ticker,
-                        "AI 점수 (Score)": float(score),
-                        "현재가": last_row['Close'].values[0],
+                        "🚦 매매 신호": signal,
+                        "📈 예상 등락률": f"{score:.2%}", # Format as %
+                        "Raw_Score": score, # Hidden for sorting
+                        "현재가": f"{last_row['Close'].values[0]:,.0f}",
                         "기준일": last_row.index[-1].strftime('%Y-%m-%d')
                     })
                 except Exception as e:
@@ -1999,16 +2015,19 @@ elif selection == "🤖 AI 모델 테스팅":
             
             if not rec_df.empty:
                  current_top_k = model_info.get('top_k', 5)
-                 # Sort and Limit
-                 final_picks = rec_df.sort_values(by="AI 점수 (Score)", ascending=False).head(current_top_k).copy()
+                 # Sort and Limit (Use Raw_Score for sorting)
+                 final_picks = rec_df.sort_values(by="Raw_Score", ascending=False).head(current_top_k).copy()
                  final_picks = final_picks.reset_index(drop=True)
                  final_picks.index += 1 # 1-based index
                  
                  st.markdown(f"### 🚀 오늘의 Top-{len(final_picks)} 추천 종목")
-                 st.dataframe(
-                     final_picks.style.background_gradient(subset=['AI 점수 (Score)'], cmap="Greens"),
-                     use_container_width=True
-                 )
+                 
+                 # Display Friendly DataFrame
+                 display_cols = ["종목코드", "🚦 매매 신호", "📈 예상 등락률", "현재가", "기준일"]
+                 st.dataframe(final_picks[display_cols], use_container_width=True)
+                 
+                 st.caption("ℹ️ **예상 등락률**: AI 모델이 예측한 다음 보유 기간(Horizon) 동안의 수익률입니다.")
+                 st.caption("ℹ️ **매매 신호**: 예상 등락률이 1% 이상이면 '강력 매수', 0.5% 이상이면 '매수'로 분류합니다.")
                  
                  # Save Portfolio Button
                  if st.button("💾 이 포트폴리오 저장하기 (Save History)"):
