@@ -1589,11 +1589,8 @@ elif selection == "🤖 AI 모델 테스팅":
                 pytorch_models[os.path.basename(base)] = {'weights': p, 'config': config_file}
 
         # Combine options
-        # Existing .pkl files
+        # Existing .pkl files (found_files already contains correctly sorted paths from lines 1569/1575)
         file_options = {}
-        found_files = glob.glob(os.path.join(MODEL_SAVE_DIR, search_pattern))
-        # Add explicit colab uploads
-        found_files += glob.glob(os.path.join(MODEL_SAVE_DIR, "colab_*.pkl"))
         
         for f in found_files:
             fname = os.path.basename(f).replace(".pkl", "")
