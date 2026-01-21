@@ -75,6 +75,9 @@ if not os.path.exists(MODEL_SAVE_DIR):
 
 def save_model_checkpoint(model_name, data):
     try:
+        if not os.path.exists(MODEL_SAVE_DIR):
+            os.makedirs(MODEL_SAVE_DIR)
+        
         filepath = os.path.join(MODEL_SAVE_DIR, f"{model_name}.pkl")
         filepath = filepath.replace(":", "-").replace("|", "_")
         with open(filepath, "wb") as f:
