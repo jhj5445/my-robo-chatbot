@@ -101,7 +101,9 @@ def calculate_feature_set(df, feature_level):
     # 0. Alpha158 (Qlib Exact Match)
     if "Alpha158" in feature_level:
         if AlphaFactory:
-            alpha_df = AlphaFactory.get_alpha158(df)
+            # [Fix] Unpack tuple (df, columns)
+            alpha_df, _ = AlphaFactory.get_alpha158(df)
+            
             # Merge alphas back to df
             # alpha_df index is MultiIndex (Date, Ticker) or matches df index
             # If df is single ticker, alpha_df might have MultiIndex.
