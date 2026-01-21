@@ -97,6 +97,20 @@ def load_model_checkpoint(model_name):
         print(f"Error loading model: {e}")
     return None
 
+# Helper: Get SPY MA200 for Regime Filter
+@st.cache_data(ttl=3600*12)
+def get_market_regime_data():
+    try:
+        spy = yf.download("SPY", period="20y", progress=False)
+        if isinstance(spy.columns, pd.MultiIndex):
+            spy.columns = spy.columns.get_level_values(0)
+        spy['MA200'] = spy['Close'].rolling(window=200).mean()
+        spy['Regime'] = np.where(spy['Close'] > spy['MA200'], 1, 0) # 1=Bull, 0=Bear
+        return spy[['Close', 'MA200', 'Regime']]
+    except Exception as e:
+        print(f"Regime Data Error: {e}")
+        return pd.DataFrame()
+
 def calculate_feature_set(df, feature_level):
     df = df.copy()
     feature_cols = []
@@ -1136,11 +1150,11 @@ elif selection == "🤖 AI 모델 테스팅":
             )
             
             # Feature 복잡도 선택
-            feature_level = st.radio(
-                "Feature 복잡도 (AI 지능)", 
-                ["Light (5개 - 속도 중심)", "Standard (22개 - 균형)", "Rich (50+개 - 정밀 분석)", "Alpha158 (Qlib - Pro)"],
-                index=1
-            )
+            feature_level = st.radio("Feature 복잡도", ["Light (기본 5개)", "Standard (22개 - 균형)", "Rich (50+개 - 심화)", "Alpha158 (Qlib - Pro)"], index=1)
+        
+        # [NEW] Regime Filter
+        st.markdown("---")
+        use_regime_filter = st.checkbox("🛡️ 하락장 방어 (Market Regime Filter)", value=True, help="S&P 500이 200일 이평선 아래일 때 현금(Cash)을 보유합니다.")
             
             # Top-K 선택
             top_k_select = st.number_input("추천할 종목 수 (Top K)", min_value=1, max_value=20, value=10)
@@ -1318,6 +1332,9 @@ elif selection == "🤖 AI 모델 테스팅":
             # 단순 평균
             return (p1 + p2 + p3) / 3
 
+        # Prepare Regime Data
+        spy_regime = get_market_regime_data() if use_regime_filter else pd.DataFrame()
+
         all_test_dates = sorted(list(set().union(*[d.index for d in test_datasets.values()])))
         
         # Holding Period Check
@@ -1398,6 +1415,29 @@ elif selection == "🤖 AI 모델 테스팅":
             # [Transaction Cost] 0.1% (0.001) per rebalance
             cost = 0.001
             period_ret = raw_period_ret - cost
+            
+            # [Regime Filter Logic]
+            if use_regime_filter and not spy_regime.empty:
+                # Check regime at curr_date
+                # Find closest date in spy_regime <= curr_date
+                try:
+                    # Using 'asof' logic or exact match
+                    if curr_date in spy_regime.index:
+                        is_bull = spy_regime.loc[curr_date, 'Regime']
+                    else:
+                        # Fallback to nearest past
+                        idx = spy_regime.index.get_indexer([curr_date], method='pad')[0]
+                        if idx != -1:
+                            is_bull = spy_regime.iloc[idx]['Regime']
+                        else:
+                            is_bull = 1 # Default to Bull if no data
+                    
+                    if is_bull == 0: # Bear Market
+                         period_ret = 0.0 # Hold Cash (Assume 0% interest for simplicity, or Risk Free Rate)
+                         # Optionally we could add small risk-free rate here
+                except Exception as e:
+                    pass # Fallback to normal
+
             
             # Benchmark (Equal Weight of Universe)
             bench_ret = sum([p['ret'] for p in candidates]) / len(candidates) if candidates else 0.0
@@ -1893,7 +1933,8 @@ elif selection == "🤖 AI 모델 테스팅":
                 "valid_tickers": fast_valid_tickers,
                 "top_k": top_k_inference, # [Fix] Use the inference specific slider
                 "feature_level": loaded_model_data['feature_level'],
-                "horizon": horizon_option
+                "horizon": horizon_option,
+                "backtest_data": loaded_model_data.get('backtest_data', {}) # [Fix] Preserve Backtest Data for display
             }
             
             st.success(f"⚡ 빠른 분석 완료! 하단 '오늘의 추천 PICK'에서 결과를 확인하세요.")
@@ -1907,6 +1948,16 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # A. Generate Predictions for the Latest Date
             recommendations = []
+            
+            # [Regime Filter Warning]
+            if use_regime_filter:
+                regime_df = get_market_regime_data()
+                if not regime_df.empty:
+                    last_regime = regime_df.iloc[-1]['Regime']
+                    if last_regime == 0:
+                         st.error("🚨 [경고] 현재 시장은 하락장(Bear Market) 국면입니다! (S&P 500 < 200일 이평선)")
+                         st.caption("💡 '하락장 방어 필터'에 의해 보수적인 접근(현금 비중 확대)이 권장됩니다.")
+
             
             st.write(f"🔎 Valid Tickers for Inference: {len(fast_valid_tickers)}") # Debug
             
