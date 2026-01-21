@@ -1163,7 +1163,10 @@ elif selection == "🤖 AI 모델 테스팅":
         for i, ticker in enumerate(tickers):
             try:
                 # 넉넉하게 받아서 이평선 계산 (Rich 모드일 경우 더 많이 필요할 수 있음)
-                lookback_days = 200 if "Rich" in feature_level else 100
+                if "Alpha158" in feature_level:
+                    lookback_days = 365 # Alpha158 requires long history
+                else:
+                    lookback_days = 200 if "Rich" in feature_level else 100
                 df = yf.download(ticker, start=train_start - pd.Timedelta(days=lookback_days), end=end_date, progress=False)
                 
                 # MultiIndex 처리
@@ -1180,6 +1183,9 @@ elif selection == "🤖 AI 모델 테스팅":
                 df = df[['Open', 'High', 'Low', 'Adj Close', 'Volume']].copy()
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] 
                 
+                # [Fix] Ensure no NaNs before feature calc (Alpha158 polyfit fails on NaNs)
+                df.dropna(inplace=True)
+
                 # ---------------- [Feature Engineering (Refactored)] ----------------
                 df, feature_cols = calculate_feature_set(df, feature_level)
 
@@ -1198,6 +1204,8 @@ elif selection == "🤖 AI 모델 테스팅":
                     valid_tickers.append(ticker)
                     
             except Exception as e:
+                # [Debug] Show error for first few tickers to diagnose
+                if i < 3: st.warning(f"⚠️ {ticker} 처리 실패: {e}")
                 pass
             
             progress_bar.progress((i + 1) / len(tickers) * 0.3)
