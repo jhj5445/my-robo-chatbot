@@ -1156,8 +1156,9 @@ elif selection == "🤖 AI 모델 테스팅":
         st.markdown("---")
         use_regime_filter = st.checkbox("🛡️ 하락장 방어 (Market Regime Filter)", value=True, help="S&P 500이 200일 이평선 아래일 때 현금(Cash)을 보유합니다.")
             
-            # Top-K 선택
-            top_k_select = st.number_input("추천할 종목 수 (Top K)", min_value=1, max_value=20, value=10)
+        
+        # Top-K 선택
+        top_k_select = st.number_input("추천할 종목 수 (Top K)", min_value=1, max_value=20, value=10)
     
         col_d1, col_d2 = st.columns(2)
         with col_d1:
