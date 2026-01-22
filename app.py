@@ -101,32 +101,40 @@ def load_model_checkpoint(model_name):
 @st.cache_data(ttl=3600*12)
 def get_macro_data():
     try:
-        # Download Individually to avoid MultiIndex/Missing column issues
-        vix = yf.download("^VIX", period="20y", progress=False)['Close']
-        tnx = yf.download("^TNX", period="20y", progress=False)['Close']
-        spy = yf.download("SPY", period="20y", progress=False)['Close']
+        def get_series(ticker, name):
+            try:
+                d = yf.Ticker(ticker).history(period="20y")
+                if d.empty: return None
+                s = d['Close']
+                s.name = name
+                # Remove TZ
+                if s.index.tz is not None:
+                    s.index = s.index.tz_localize(None)
+                return s
+            except:
+                return None
+
+        vix = get_series("^VIX", "Macro_VIX")
+        tnx = get_series("^TNX", "Macro_US10Y")
+        spy = get_series("SPY", "Macro_SPY")
         
-        # Rename Series
-        vix.name = "Macro_VIX"
-        tnx.name = "Macro_US10Y"
-        spy.name = "Macro_SPY"
-        
-        # Merge into one DataFrame
-        data = pd.concat([vix, tnx, spy], axis=1)
-        
-        # [Critical] Remove Timezone Information for safe merging
-        if data.index.tz is not None:
-             data.index = data.index.tz_localize(None)
+        if spy is None:
+             raise Exception("Critical: SPY data could not be downloaded via yfinance.")
+             
+        # Merge available data
+        dfs = [x for x in [vix, tnx, spy] if x is not None]
+        data = pd.concat(dfs, axis=1)
         
         # Fill missing
         data = data.ffill().dropna()
         
         # Calculate Regime (for Filter)
-        data['MA200'] = data['Macro_SPY'].rolling(window=200).mean()
-        data['Regime'] = np.where(data['Macro_SPY'] > data['MA200'], 1, 0) # 1=Bull
-        
-        # Calculate Macro Features (for AI)
-        data['Macro_SPY_ROC'] = data['Macro_SPY'].pct_change(20) # Market Momentum
+        if 'Macro_SPY' in data.columns:
+            data['MA200'] = data['Macro_SPY'].rolling(window=200).mean()
+            data['Regime'] = np.where(data['Macro_SPY'] > data['MA200'], 1, 0) # 1=Bull
+            data['Macro_SPY_ROC'] = data['Macro_SPY'].pct_change(20) # Market Momentum
+        else:
+             raise Exception("Macro_SPY column missing after merge.")
         
         return data
     except Exception as e:
