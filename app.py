@@ -118,13 +118,18 @@ def get_macro_data():
         tnx = get_series("^TNX", "Macro_US10Y")
         spy = get_series("SPY", "Macro_SPY")
         
+        # [NEW] Defensive Assets
+        shy = get_series("SHY", "Defense_SHY") # Short Treasury
+        ief = get_series("IEF", "Defense_IEF") # 7-10y Treasury
+        gld = get_series("GLD", "Defense_GLD") # Gold
+        
         if spy is None:
              raise Exception("Critical: SPY data could not be downloaded via yfinance.")
              
         # Merge available data
         # [Fix] Clean Timezone *Before* Concat to ensure alignment
         dfs = []
-        for x in [vix, tnx, spy]:
+        for x in [vix, tnx, spy, shy, ief, gld]:
             if x is not None:
                 if x.index.tz is not None:
                      x.index = x.index.tz_localize(None)
@@ -133,7 +138,7 @@ def get_macro_data():
         data = pd.concat(dfs, axis=1)
         
         # Fill missing
-        data = data.ffill().dropna()
+        data = data.ffill().dropna() # Allow some missing in Defense assets, but mainly need SPY
         
         # Calculate Regime (for Filter)
         if 'Macro_SPY' in data.columns:
@@ -1198,9 +1203,16 @@ elif selection == "🤖 AI 모델 테스팅":
             # Feature 복잡도 선택
             feature_level = st.radio("Feature 복잡도", ["Light (기본 5개)", "Standard (22개 - 균형)", "Rich (50+개 - 심화)", "Alpha158 (Qlib - Pro)"], index=1)
         
-        # [NEW] Regime Filter
+        # [NEW] Regime Filter & Defensive Asset
         st.markdown("---")
-        use_regime_filter = st.checkbox("🛡️ 하락장 방어 (Market Regime Filter)", value=True, help="S&P 500이 200일 이평선 아래일 때 현금(Cash)을 보유합니다.")
+        use_regime_filter = st.checkbox("🛡️ 하락장 방어 (Market Regime Filter)", value=True, help="S&P 500이 200일 이평선 아래일 때, 방어 자산으로 피신합니다.")
+        
+        defense_asset = "현금 (Cash)"
+        if use_regime_filter:
+             defense_asset = st.selectbox(
+                 "🛡️ 피신할 방어 자산 선택 (Defensive Asset)",
+                 ["현금 (Cash) - 수익률 0%", "국채/단기채 (SHY) - 안정적 이자", "국채/중기채 (IEF) - 헷지 효과", "금 (GLD) - 인플레 방어"]
+             )
             
         
         # Top-K 선택
@@ -1224,7 +1236,7 @@ elif selection == "🤖 AI 모델 테스팅":
             # [NEW] Fetch Macro Data Once
             macro_df = get_macro_data()
             if not macro_df.empty:
-                st.info(f"✅ 매크로 데이터 로드 완료 (VIX, US10Y, SPY) - 총 {len(macro_df)}일")
+                st.info(f"✅ 매크로 데이터 로드 완료 - 총 {len(macro_df)}일 (Defense: {defense_asset})")
             else:
                 st.warning("⚠️ 매크로 데이터를 불러오지 못했습니다. 기술적 지표로만 학습합니다.")
             
@@ -1497,7 +1509,44 @@ elif selection == "🤖 AI 모델 테스팅":
                                 is_bull = 1 # Default to Bull if no data
                         
                         if is_bull == 0: # Bear Market
-                            period_ret = 0.0 # Hold Cash
+                            # Apply Defensive Return
+                            period_ret = 0.0 # Default Cash
+                            
+                            if "SHY" in defense_asset:
+                                target_col = "Defense_SHY"
+                            elif "IEF" in defense_asset:
+                                target_col = "Defense_IEF"
+                            elif "GLD" in defense_asset:
+                                target_col = "Defense_GLD"
+                            else:
+                                target_col = None # Cash
+                            
+                            if target_col and target_col in macro_df.columns:
+                                try:
+                                    # Calculate logic for asset return (curr -> next)
+                                    # Need price at curr and next
+                                    p0 = macro_df.loc[curr_date, target_col] if curr_date in macro_df.index else None
+                                    # For p1, finding next_date in macro_df
+                                    # Macro data might end earlier or not have next_date exact match.
+                                    # Use asof or strict match. Main loop relies on rebalance_dates which come from test_datasets
+                                    # Macro DF and Test DF should overlap.
+                                    
+                                    if next_date in macro_df.index:
+                                        p1 = macro_df.loc[next_date, target_col]
+                                    else:
+                                        # Fallback to nearest
+                                         idx = macro_df.index.get_indexer([next_date], method='pad')[0]
+                                         if idx != -1:
+                                             p1 = macro_df.iloc[idx][target_col]
+                                         else:
+                                             p1 = p0
+                                    
+                                    if p0 and p1:
+                                        period_ret = (p1 / p0) - 1
+                                        pass
+                                except:
+                                    period_ret = 0.0
+                            
                             cash_days += 1
                     except Exception as e:
                         pass # Fallback to normal
