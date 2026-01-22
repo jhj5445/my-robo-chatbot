@@ -130,7 +130,7 @@ def get_macro_data():
         
         return data
     except Exception as e:
-        print(f"Macro Data Error: {e}")
+        st.error(f"Macro Data Detail Error: {e}")
         return pd.DataFrame()
 
 def calculate_feature_set(df, feature_level, macro_data=None):
