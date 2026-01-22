@@ -136,24 +136,23 @@ def calculate_feature_set(df, feature_level, macro_data=None):
     feature_cols = []
     
     # [NEW] Merge Macro Data if provided
-    if macro_data is not None:
+    if macro_data is not None and not macro_data.empty:
         # Left Join on Date Index
         original_rows = len(df)
-        df = df.join(macro_data[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']], how='left')
-        
-        # [Fix] Shift Macro Features by 1 day (Use Yesterday's Macro to predict)
-        # Prevents Look-Ahead Bias if running intraday
-        df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].shift(1)
-        
-        # Fill NaNs (for the very first day or missing days)
-        df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].ffill()
-        
-        # Add to features
-        feature_cols.extend(['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC'])
-    
-    # 0. Alpha158 (Qlib Exact Match)
-    df = df.copy()
-    feature_cols = []
+        try:
+             df = df.join(macro_data[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']], how='left')
+             
+             # [Fix] Shift Macro Features by 1 day (Use Yesterday's Macro to predict)
+             # Prevents Look-Ahead Bias if running intraday
+             df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].shift(1)
+             
+             # Fill NaNs (for the very first day or missing days)
+             df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].ffill()
+             
+             # Add to features
+             feature_cols.extend(['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC'])
+        except Exception as e:
+             print(f"Macro Merge Failed: {e}")
 
     # 0. Alpha158 (Qlib Exact Match)
     if "Alpha158" in feature_level:
