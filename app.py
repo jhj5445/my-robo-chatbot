@@ -101,22 +101,24 @@ def load_model_checkpoint(model_name):
 @st.cache_data(ttl=3600*12)
 def get_macro_data():
     try:
-        # Download VIX, 10Y Treasury, SPY
-        tickers = ["^VIX", "^TNX", "SPY"]
-        data = yf.download(tickers, period="20y", progress=False)['Close']
+        # Download Individually to avoid MultiIndex/Missing column issues
+        vix = yf.download("^VIX", period="20y", progress=False)['Close']
+        tnx = yf.download("^TNX", period="20y", progress=False)['Close']
+        spy = yf.download("SPY", period="20y", progress=False)['Close']
         
-        # Handle MultiIndex
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0) # Simplify
-            
-        # Rename for clarity
-        data = data.rename(columns={
-            "^VIX": "Macro_VIX", 
-            "^TNX": "Macro_US10Y",
-            "SPY": "Macro_SPY"
-        })
+        # Rename Series
+        vix.name = "Macro_VIX"
+        tnx.name = "Macro_US10Y"
+        spy.name = "Macro_SPY"
         
-        # Fill missing (different holidays)
+        # Merge into one DataFrame
+        data = pd.concat([vix, tnx, spy], axis=1)
+        
+        # [Critical] Remove Timezone Information for safe merging
+        if data.index.tz is not None:
+             data.index = data.index.tz_localize(None)
+        
+        # Fill missing
         data = data.ffill().dropna()
         
         # Calculate Regime (for Filter)
@@ -133,6 +135,11 @@ def get_macro_data():
 
 def calculate_feature_set(df, feature_level, macro_data=None):
     df = df.copy()
+    
+    # [Critical] Ensure Stock DF is also TZ-naive
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+        
     feature_cols = []
     
     # [NEW] Merge Macro Data if provided
@@ -1216,6 +1223,10 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # [NEW] Fetch Macro Data Once
             macro_df = get_macro_data()
+            if not macro_df.empty:
+                st.info(f"✅ 매크로 데이터 로드 완료 (VIX, US10Y, SPY) - 총 {len(macro_df)}일")
+            else:
+                st.warning("⚠️ 매크로 데이터를 불러오지 못했습니다. 기술적 지표로만 학습합니다.")
             
             full_data = {}
             valid_tickers = []
