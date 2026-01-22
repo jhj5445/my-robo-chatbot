@@ -122,7 +122,14 @@ def get_macro_data():
              raise Exception("Critical: SPY data could not be downloaded via yfinance.")
              
         # Merge available data
-        dfs = [x for x in [vix, tnx, spy] if x is not None]
+        # [Fix] Clean Timezone *Before* Concat to ensure alignment
+        dfs = []
+        for x in [vix, tnx, spy]:
+            if x is not None:
+                if x.index.tz is not None:
+                     x.index = x.index.tz_localize(None)
+                dfs.append(x)
+        
         data = pd.concat(dfs, axis=1)
         
         # Fill missing
@@ -141,7 +148,7 @@ def get_macro_data():
         st.error(f"Macro Data Detail Error: {e}")
         return pd.DataFrame()
 
-def calculate_feature_set(df, feature_level, macro_data=None):
+def calculate_feature_set(df, feature_level):
     df = df.copy()
     
     # [Critical] Ensure Stock DF is also TZ-naive
@@ -150,25 +157,10 @@ def calculate_feature_set(df, feature_level, macro_data=None):
         
     feature_cols = []
     
-    # [NEW] Merge Macro Data if provided
-    if macro_data is not None and not macro_data.empty:
-        # Left Join on Date Index
-        original_rows = len(df)
-        try:
-             df = df.join(macro_data[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']], how='left')
-             
-             # [Fix] Shift Macro Features by 1 day (Use Yesterday's Macro to predict)
-             # Prevents Look-Ahead Bias if running intraday
-             df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].shift(1)
-             
-             # Fill NaNs (for the very first day or missing days)
-             df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']] = df[['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC']].ffill()
-             
-             # Add to features
-             feature_cols.extend(['Macro_VIX', 'Macro_US10Y', 'Macro_SPY_ROC'])
-        except Exception as e:
-             print(f"Macro Merge Failed: {e}")
-
+    # [REVERTED] Macro Features Removed from Training Input
+    # The user observed worse performance with VIX/Rates as features.
+    # We only use Macro Data for the "Regime Filter" (Hard Rule) now.
+    
     # 0. Alpha158 (Qlib Exact Match)
     if "Alpha158" in feature_level:
         if AlphaFactory:
@@ -1268,10 +1260,11 @@ elif selection == "🤖 AI 모델 테스팅":
                     raw_df.columns = ['Open', 'High', 'Low', 'Close', 'Volume'] 
                     
                     # [Fix] Ensure no NaNs before feature calc (Alpha158 polyfit fails on NaNs)
-                    raw_df.dropna(inplace=True)
-
-                    # ---------------- [Feature Engineering (Refactored)] ----------------
-                    df, cols = calculate_feature_set(raw_df, feature_level, macro_data=macro_df)
+                    if raw_df.empty: continue
+                    
+                    # Feature Engineering
+                    # [REVERTED] macro_data removed
+                    df, cols = calculate_feature_set(raw_df, feature_level)
                     
                     # [Fix] Capture feature_cols from the first successful ticker
                     if not feature_cols:
@@ -1420,6 +1413,8 @@ elif selection == "🤖 AI 모델 테스팅":
             plot_model = []
             plot_bench = []
             
+            cash_days = 0 # [Debug] Count how many days we held cash
+            
             for i in range(total_steps):
                 curr_date = rebalance_dates[i]
                 next_date = rebalance_dates[i+1] # 다음 리밸런싱 날짜
@@ -1502,8 +1497,8 @@ elif selection == "🤖 AI 모델 테스팅":
                                 is_bull = 1 # Default to Bull if no data
                         
                         if is_bull == 0: # Bear Market
-                             period_ret = 0.0 # Hold Cash (Assume 0% interest for simplicity, or Risk Free Rate)
-                             # Optionally we could add small risk-free rate here
+                            period_ret = 0.0 # Hold Cash
+                            cash_days += 1
                     except Exception as e:
                         pass # Fallback to normal
 
@@ -1589,6 +1584,8 @@ elif selection == "🤖 AI 모델 테스팅":
                 c1.metric("AI 포트폴리오 수익률 (Cost 0.1%)", f"{total_ret:.2%}")
                 c2.metric("S&P 500 수익률", f"{spy_ret:.2%}")
                 c3.metric("동일 비중 (Equal)", f"{eq_ret:.2%}")
+                
+                st.caption(f"🛡️ 하락장 방어(현금 보유) 일수: {cash_days}회 / 총 {total_steps}회 리밸런싱")
                 
                 st.subheader(f"📈 백테스팅 결과: AI Top-{top_k_select} 전략 vs 시장")
                 # st.line_chart(results_df) # Moved to Tab View
