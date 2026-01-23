@@ -47,6 +47,21 @@ import pandas as pd
 import pickle # Added for Persistence
 import datetime
 import json
+import numpy as np
+import scipy.optimize as sco
+from pykrx import stock
+import time
+from datetime import datetime, timedelta
+
+# [NEW] PyTorch Import (Safe)
+try:
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    from torch.utils.data import DataLoader, TensorDataset
+except ImportError:
+    torch = None
+
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
@@ -269,6 +284,71 @@ def calculate_feature_set(df, feature_level):
             
     feature_cols = list(set(feature_cols)) # Ensure unique
     return df, feature_cols
+
+# -----------------------------------------------------------------------------
+# [NEW] Transformer Model Definition (PyTorch)
+# -----------------------------------------------------------------------------
+if torch:
+    class PositionalEncoding(nn.Module):
+        def __init__(self, d_model, max_len=500):
+            super(PositionalEncoding, self).__init__()
+            # Create constant 'pe' matrix with values dependent on pos and i
+            pe = torch.zeros(max_len, d_model)
+            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+            pe = pe.unsqueeze(0).transpose(0, 1) # [max_len, 1, d_model]
+            self.register_buffer('pe', pe)
+
+        def forward(self, x):
+            # x: [seq_len, batch_size, d_model]
+            return x + self.pe[:x.size(0), :]
+
+    class TransformerModel(nn.Module):
+        def __init__(self, input_dim, d_model=64, nhead=4, num_layers=2, dropout=0.1, output_dim=1):
+            super(TransformerModel, self).__init__()
+            self.model_type = 'Transformer'
+            self.src_mask = None
+            
+            # Input Embedding (Linear projection from input_dim to d_model)
+            self.embedding = nn.Linear(input_dim, d_model)
+            self.pos_encoder = PositionalEncoding(d_model)
+            
+            encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=256, dropout=dropout)
+            self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
+            
+            self.decoder = nn.Linear(d_model, output_dim)
+            self.input_dim = input_dim # Save for later check
+
+        def forward(self, src):
+            # src: [seq_len, batch, input_dim]
+            src = self.embedding(src) # [seq_len, batch, d_model]
+            src = self.pos_encoder(src)
+            output = self.transformer_encoder(src) # [seq_len, batch, d_model]
+            # Use only the last time step for prediction
+            output = self.decoder(output[-1, :, :]) # [batch, output_dim]
+            return output
+
+    def create_sequences(X, y, seq_len):
+        xs = []
+        ys = []
+        # X: (N, F), y: (N,)
+        for i in range(len(X) - seq_len):
+            x_seq = X[i:(i+seq_len)]
+            y_target = y[i+seq_len] # Target is the label of the *next* step after sequence
+            # Actually, y_train is already aligned such that y[t] is return of t+1.
+            # If we use x[t-9]...x[t] to predict y[t], then y[t] is the return of t+1.
+            # In our current setup, y_train[i] corresponds to X_train[i]'s target.
+            # So if we want to predict y_train[i], we need context leading up to i.
+            # Wait, X_train is shuffled? No, currently we concat per ticker, so local blocks are sequential.
+            # BUT, we perform `X_train_all.append` and then `concatenate`. 
+            # If multiple tickers, there are jumps.
+            # We MUST create sequences PER TICKER before concat.
+            pass
+        return np.array(xs), np.array(ys)
+else:
+    TransformerModel = None
 
 # -----------------------------------------------------------------------------
 # Portfolio & Universe Helpers (Moved to Top for Scope Safety)
@@ -1188,9 +1268,13 @@ elif selection == "🤖 AI 모델 테스팅":
                 st.info(f"선택된 유니버스: {len(tickers)}개 종목")
 
         with col2:
+            model_type_options = ["⭐ 앙상블 (Ensemble: Linear+SVM+LGBM)", "Linear Regression (선형회귀)", "LightGBM (트리 부스팅)", "SVM (Support Vector Machine)"]
+            if torch:
+                model_type_options.insert(1, "🚀 Transformer (Deep Learning)")
+            
             model_type = st.selectbox(
                 "사용할 AI 모델", 
-                ["⭐ 앙상블 (Ensemble: Linear+SVM+LGBM)", "Linear Regression (선형회귀)", "LightGBM (트리 부스팅)", "SVM (Support Vector Machine)"]
+                model_type_options
             )
             
             # Prediction Horizon ( 보유 기간 )
@@ -1316,6 +1400,10 @@ elif selection == "🤖 AI 모델 테스팅":
             
             # feature_cols는 위에서 자동 생성됨
             
+            # [Transformer Specific] Need Sequence Data
+            is_transformer = "Transformer" in model_type
+            seq_len = 10 if is_transformer else 1
+            
             test_datasets = {} 
             
             for ticker in valid_tickers:
@@ -1326,12 +1414,42 @@ elif selection == "🤖 AI 모델 테스팅":
                 train_df = df[train_mask]
                 test_df = df[test_mask]
                 
-                if not train_df.empty:
-                    X_train_all.append(train_df[feature_cols].values)
-                    y_train_all.append(train_df['Next_Return'].values)
+                # Create Sequences Only for Transformer
+                if is_transformer:
+                    val_data = train_df[feature_cols].values
+                    val_target = train_df['Next_Return'].values
+                    # Create Sequences
+                    if len(val_data) > seq_len:
+                        xs = []
+                        ys = []
+                        for i in range(len(val_data) - seq_len):
+                            xs.append(val_data[i:(i+seq_len)])
+                            ys.append(val_target[i+seq_len-1]) # Target aligned to the last step of sequence?
+                            # Clarification: We want to predict Next_Return of step T using T-9...T.
+                            # train_df['Next_Return'] at row T is return(T->T+1).
+                            # So if input is x[T-9]...x[T], output is y[T].
+                            # Correct.
+                        if xs:
+                            X_train_all.append(np.array(xs))
+                            y_train_all.append(np.array(ys))
+                else:
+                    if not train_df.empty:
+                        X_train_all.append(train_df[feature_cols].values)
+                        y_train_all.append(train_df['Next_Return'].values)
                 
+                # Test Data: Keep as DF for simulation loop, handle sequence there
                 if not test_df.empty:
-                    test_datasets[ticker] = test_df
+                    # Provide enough history for sequence generation during test
+                    if is_transformer:
+                        # Prepend history from train for boundary continuity
+                        # Look back seq_len steps from full_data
+                        # Find start index of test_df in full_data
+                        start_idx = len(train_df)
+                        # We need full_data slice
+                        full_vals = df # full df
+                        test_datasets[ticker] = full_vals # Store full DF to allow lookback (handled in loop)
+                    else:
+                        test_datasets[ticker] = test_df
             
             if not X_train_all:
                 st.error("학습 데이터가 부족합니다 기간을 늘려주세요.")
@@ -1341,11 +1459,74 @@ elif selection == "🤖 AI 모델 테스팅":
             y_train = np.concatenate(y_train_all)
             
             # Scaling
+            # For Transformer, we scale features. X_train shape: (N, Seq, F)
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
+            
+            if is_transformer:
+                N, S, F = X_train.shape
+                # Reshape to 2D for scaling
+                X_train_reshaped = X_train.reshape(-1, F)
+                X_train_scaled_flat = scaler.fit_transform(X_train_reshaped)
+                X_train_scaled = X_train_scaled_flat.reshape(N, S, F)
+            else:
+                X_train_scaled = scaler.fit_transform(X_train)
             
             # Model Fitting
-            if "Ensemble" in model_type:
+            if "Transformer" in model_type and torch:
+                st.info("🚀 Transformer 학습 시작 (Epochs: 20)... GPU: " + ("On" if torch.cuda.is_available() else "Off (CPU)"))
+                
+                # Hyperparams
+                BATCH_SIZE = 64
+                EPOCHS = 20
+                LR = 0.001
+                
+                # Tensor Check
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                
+                x_tensor = torch.tensor(X_train_scaled, dtype=torch.float32).to(device)
+                y_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1).to(device)
+                
+                # Transpose for Transformer: (Seq, Batch, F) from (Batch, Seq, F)
+                x_tensor = x_tensor.permute(1, 0, 2) 
+                
+                model = TransformerModel(input_dim=x_tensor.shape[2]).to(device)
+                criterion = nn.MSELoss()
+                optimizer = optim.Adam(model.parameters(), lr=LR)
+                
+                dataset = TensorDataset(x_tensor.permute(1, 0, 2), y_tensor) # Back to (Batch, Seq) for Loader
+                # Wait, logic above permuted x_tensor, so pass permuted?
+                # Loader expects (N, ...)
+                # Let's keep x_tensor as (Batch, Seq, F) in dataset
+                x_tensor = x_tensor.permute(1, 0, 2) # Restore to (Batch, Seq, F)
+                
+                loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+                
+                model.train()
+                prog = st.empty()
+                
+                for epoch in range(EPOCHS):
+                    total_loss = 0
+                    for batch_x, batch_y in loader:
+                        # batch_x: (Batch, Seq, F) -> Need (Seq, Batch, F)
+                        batch_x = batch_x.permute(1, 0, 2).to(device)
+                        batch_y = batch_y.to(device)
+                        
+                        optimizer.zero_grad()
+                        output = model(batch_x)
+                        loss = criterion(output, batch_y)
+                        loss.backward()
+                        optimizer.step()
+                        total_loss += loss.item()
+                    
+                    if epoch % 5 == 0:
+                        prog.text(f"Transformer Training... Epoch {epoch}/{EPOCHS}, Loss: {total_loss/len(loader):.6f}")
+                
+                model.eval()
+                # Wrap model for compatibility? Or handle in predict loop.
+                # Transformer needs 'model.eval()' and 'torch' context.
+                # We'll pass raw model and handle check in loop.
+                
+            elif "Ensemble" in model_type:
                  # 앙상블 모델 학습
                 st.info("⭐ 앙상블 모드: 3가지 모델(Linear, LightGBM, SVM)을 모두 학습합니다...")
                 
@@ -1435,21 +1616,57 @@ elif selection == "🤖 AI 모델 테스팅":
                 candidates = []
                 
                 for ticker in valid_tickers:
-                    if ticker in test_datasets and curr_date in test_datasets[ticker].index:
-                        df = test_datasets[ticker]
-                        row = df.loc[curr_date]
+                    # Transformer needs specific handling (Sequence)
+                    if ticker in test_datasets:
+                        # For Transformer, we stored FULL DF in test_datasets to allow lookback
+                        # For others, we stored TEST DF.
+                        # Handle unification: all can be accessed via full_data[ticker] ideally, 
+                        # but let's use what we have.
                         
-                        # Feature
-                        feats = row[feature_cols].values.reshape(1, -1)
-                        feats_scaled = scaler.transform(feats)
+                        df_full = full_data[ticker] # Always use full for lookback safety
                         
-                        # Score
-                        if isinstance(model, dict): # Ensemble
-                            score = predict_ensemble(model, feats_scaled)[0]
+                        if curr_date not in df_full.index:
+                            continue
+                            
+                        # Locate index
+                        curr_idx_loc = df_full.index.get_loc(curr_date)
+                        
+                        # Prepare Input
+                        if is_transformer:
+                            # Need [curr_idx - seq_len + 1 : curr_idx + 1]
+                            start_loc = curr_idx_loc - seq_len + 1
+                            if start_loc < 0: continue # Not enough history
+                            
+                            seq_data = df_full.iloc[start_loc : curr_idx_loc + 1][feature_cols].values
+                            if len(seq_data) != seq_len: continue
+                            
+                            # Scale
+                            seq_scaled = scaler.transform(seq_data) # (Seq, F)
+                            
+                            # Tensor
+                            # Input to model: (Seq, Batch=1, F)
+                            inp = torch.tensor(seq_scaled, dtype=torch.float32).unsqueeze(1).to(device)
+                            
+                            with torch.no_grad():
+                                score = model(inp).item()
+                                
                         else:
-                            score = model.predict(feats_scaled)[0]
+                            # Logic for Single Step models
+                            if curr_date in test_datasets.get(ticker, pd.DataFrame()).index:
+                                row = test_datasets[ticker].loc[curr_date]
+                                feats = row[feature_cols].values.reshape(1, -1)
+                                feats_scaled = scaler.transform(feats)
+                                
+                                if isinstance(model, dict):
+                                    score = predict_ensemble(model, feats_scaled)[0]
+                                else:
+                                    score = model.predict(feats_scaled)[0]
+                            else:
+                                continue
 
                         # Actual Return (curr_date -> next_date)
+                        # ... (existing logic)
+                        df = df_full
                         actual_ret = 0.0
                         try:
                             p_start = df.loc[curr_date, 'Close']
@@ -2078,60 +2295,79 @@ elif selection == "🤖 AI 모델 테스팅":
                 df = fast_data[ticker]
                 if df.empty: continue
                 
-                # Get Last Row
-                last_row = df.iloc[[-1]] # Keep DataFrame format
+                # [Transformer Support]
+                is_transformer = (getattr(model, 'model_type', '') == 'Transformer')
+                seq_len = 10 if is_transformer else 1
                 
-                # Prepare Features
+                # Check history length
+                if len(df) < seq_len: continue
+                
+                # Get Last Row (Meta)
+                last_row = df.iloc[[-1]] 
+                
                 try:
-                    feat_vals = last_row[feature_cols].copy() # Ensure DataFrame/Series
-                    
-                    # 1. Scale (if scaler exists)
-                    if scaler:
-                         feat_scaled = scaler.transform(feat_vals.values)
-                    else:
-                         feat_scaled = feat_vals.values
-                    
-                    # 2. [Critical] Check Feature Dimension (Padding for Alpha158 vs Standard mismatch)
-                    expected_dim = getattr(model, 'd_feat', None)
-                    if expected_dim and feat_scaled.shape[1] < expected_dim:
-                         current_dim = feat_scaled.shape[1]
-                         pad_size = expected_dim - current_dim
-                         import numpy as np
-                         padding = np.zeros((feat_scaled.shape[0], pad_size))
-                         feat_scaled = np.hstack([feat_scaled, padding])
-                    
-                    # Debug: Show shape and first few values
-                    # if ticker == "AAPL":
-                    #      st.write(f"AAPL Shape: {feat_scaled.shape}")
-                    #      st.write(f"AAPL Feats: {feat_scaled[0][:5]}...")
-                    
-                    # Predict
                     score = 0
-                    if isinstance(model, dict): # Ensemble
-                         if "Linear" in model: 
-                             p = model["Linear"].predict(feat_scaled)
-                             score += p.item() if hasattr(p, 'item') else p[0]
-                         if "LightGBM" in model: 
-                             p = model["LightGBM"].predict(feat_scaled)
-                             score += p.item() if hasattr(p, 'item') else p[0]
-                         if "SVM" in model: 
-                             p = model["SVM"].predict(feat_scaled)
-                             score += p.item() if hasattr(p, 'item') else p[0]
-                         score /= 3.0
-                    else:
-                        pred_res = model.predict(feat_scaled)
-                        # Robust scalar extraction
-                        if hasattr(pred_res, 'item'):
-                            score = pred_res.item()
-                        elif hasattr(pred_res, '__iter__') and len(pred_res) > 0:
-                            score = pred_res.flat[0] # Handle any shape
-                        else:
-                            score = pred_res # Assume simple float
                     
-                    # Debug Score
-                    st.write(f"{ticker} Score: {score} (Type: {type(score)})")
+                    if is_transformer:
+                        # Prepare Sequence
+                        # Take last seq_len rows
+                        seq_df = df.iloc[-seq_len:]
+                        feat_vals = seq_df[feature_cols].values # (Seq, F)
                         
-                    # Interpret Score
+                        # Scale
+                        if scaler:
+                            feat_scaled = scaler.transform(feat_vals)
+                        else:
+                            feat_scaled = feat_vals
+                            
+                        # Tensor (Seq, Batch=1, F)
+                        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                        inp = torch.tensor(feat_scaled, dtype=torch.float32).unsqueeze(1).to(device)
+                        
+                        model.eval() # Ensure eval mode
+                        with torch.no_grad():
+                            score = model(inp).item()
+                            
+                    else:
+                        # Standard Models (Linear/LGBM/SVM/Ensemble)
+                        feat_vals = last_row[feature_cols].copy()
+                        
+                        # 1. Scale
+                        if scaler:
+                             feat_scaled = scaler.transform(feat_vals.values)
+                        else:
+                             feat_scaled = feat_vals.values
+                        
+                        # 2. Alpha158 Padding Check (for saved models)
+                        expected_dim = getattr(model, 'd_feat', None)
+                        if expected_dim and feat_scaled.shape[1] < expected_dim:
+                             current_dim = feat_scaled.shape[1]
+                             pad_size = expected_dim - current_dim
+                             padding = np.zeros((feat_scaled.shape[0], pad_size))
+                             feat_scaled = np.hstack([feat_scaled, padding])
+                        
+                        # Predict
+                        if isinstance(model, dict): # Ensemble
+                             if "Linear" in model: 
+                                 p = model["Linear"].predict(feat_scaled)
+                                 score += p.item() if hasattr(p, 'item') else p[0]
+                             if "LightGBM" in model: 
+                                 p = model["LightGBM"].predict(feat_scaled)
+                                 score += p.item() if hasattr(p, 'item') else p[0]
+                             if "SVM" in model: 
+                                 p = model["SVM"].predict(feat_scaled)
+                                 score += p.item() if hasattr(p, 'item') else p[0]
+                             score /= 3.0
+                        else:
+                            pred_res = model.predict(feat_scaled)
+                            if hasattr(pred_res, 'item'):
+                                score = pred_res.item()
+                            elif hasattr(pred_res, '__iter__') and len(pred_res) > 0:
+                                score = pred_res.flat[0]
+                            else:
+                                score = pred_res
+                    
+                    # Interpret Score (Common)
                     signal = "Hold (관망)"
                     if score > 0.01: signal = "Strong Buy (강력 매수) 🚀"
                     elif score > 0.005: signal = "Buy (매수) 📈"
@@ -2141,8 +2377,8 @@ elif selection == "🤖 AI 모델 테스팅":
                     recommendations.append({
                         "종목코드": ticker,
                         "🚦 매매 신호": signal,
-                        "📈 예상 등락률": f"{score:.2%}", # Format as %
-                        "Raw_Score": score, # Hidden for sorting
+                        "📈 예상 등락률": f"{score:.2%}",
+                        "Raw_Score": score,
                         "현재가": f"{last_row['Close'].values[0]:,.0f}",
                         "기준일": last_row.index[-1].strftime('%Y-%m-%d')
                     })
