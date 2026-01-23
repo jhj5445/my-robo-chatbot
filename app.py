@@ -1269,8 +1269,10 @@ elif selection == "🤖 AI 모델 테스팅":
 
         with col2:
             model_type_options = ["⭐ 앙상블 (Ensemble: Linear+SVM+LGBM)", "Linear Regression (선형회귀)", "LightGBM (트리 부스팅)", "SVM (Support Vector Machine)"]
-            if torch:
-                model_type_options.insert(1, "🚀 Transformer (Deep Learning)")
+            
+            # [Hybrid Mode] 트레이딩용 Transformer는 무거우므로 Colab에서 학습 권장
+            # if torch:
+            #    model_type_options.insert(1, "🚀 Transformer (Deep Learning)")
             
             model_type = st.selectbox(
                 "사용할 AI 모델", 
