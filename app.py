@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import os
+import re
 
 # -----------------------------------------------------------------------------
 # 1. API 키 설정 (Rotation Logic)
@@ -97,10 +98,17 @@ faq_text_block = "\n".join([f"{k}: {v}" for k, v in SCENARIO_DATA.items()]) # Si
 system_prompt = f"""
 당신은 로보어드바이저 상담 챗봇입니다.
 사용자의 질문에 대해 아래 시나리오 데이터를 참고하여 친절하게 답변해주세요.
-시나리오 데이터에 없는 내용은 "죄송합니다, 해당 내용은 상담원 연결이 필요합니다."라고 답해주세요.
 
 [데이터]
 {faq_text_block}
+
+시나리오 데이터에 없는 내용은 "죄송합니다, 해당 내용은 상담원 연결이 필요합니다."라고 답해주세요.
+
+[답변 가이드]
+1. 답변의 마지막에 반드시 해당 답변의 **데이터 기반 신뢰도(정확도)**를 `[[Confidence: 00%]]` 형식으로 표기해주세요.
+   - **90~100%**: 데이터에 정확히 일치하는 내용이 있을 때.
+   - **70~89%**: 데이터 내용을 바탕으로 유추했을 때.
+   - **0~69%**: 데이터에 없거나 불확실할 때.
 """
 
 # -----------------------------------------------------------------------------
@@ -117,6 +125,9 @@ st.markdown(
         .stButton button { background-color: #ffffff; color: #5383e8; border: 1px solid #5383e8; font-weight: bold; width: 100%; text-align: left; transition: all 0.3s; }
         .stButton button:hover { background-color: #5383e8; color: white; }
         .answer-box { background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #dce2f0; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .confidence-low { color: #d9534f; font-weight: bold; }
+        .confidence-med { color: #f0ad4e; font-weight: bold; }
+        .confidence-high { color: #5cb85c; font-weight: bold; }
     </style>
     """,
     unsafe_allow_html=True
@@ -214,6 +225,7 @@ with col_chat:
         for msg in st.session_state['messages']:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
+                # 만약 이전 메시지에 confidence가 저장되어 있다면 표시 (구조 개선 필요하지만 여기선 간단히 텍스트로 처리됨)
     
     # 입력창
     if prompt := st.chat_input("시나리오에 없는 내용은 직접 물어보세요!"):
@@ -226,12 +238,41 @@ with col_chat:
         # AI 답변 생성
         with chat_container:
             with st.chat_message("assistant"):
-                with st.spinner("답변 생성 중..."):
+                with st.spinner("전문가 답변 생성 중... (Confidence Check)"):
                     try:
-                        # 현재 시나리오 맥락을 포함할지 여부는 선택사항. 여기선 전체 FAQ 기반.
-                        full_prompt = f"질문: {prompt}\n\n답변 (전문가 톤으로):"
-                        response = generate_content_with_rotation(full_prompt)
-                        st.markdown(response)
-                        st.session_state['messages'].append({"role": "assistant", "content": response})
+                        # 시스템 프롬프트 주입
+                        full_prompt = f"{system_prompt}\n\n질문: {prompt}\n\n답변 (전문가 톤으로):"
+                        response = generate_content_with_rotation(full_prompt, model_name="gemini-3-flash-preview")
+                        
+                        # Confidence Score 파싱
+                        confidence_match = re.search(r"\[\[Confidence:\s*(\d+)%\]\]", response)
+                        confidence_score = 0
+                        clean_response = response
+                        
+                        if confidence_match:
+                            confidence_score = int(confidence_match.group(1))
+                            # 태그 제거
+                            clean_response = response.replace(confidence_match.group(0), "").strip()
+                        
+                        # 텍스트 출력
+                        st.markdown(clean_response)
+                        
+                        # 신뢰도 표시
+                        if confidence_score > 0:
+                            if confidence_score >= 90:
+                                color_class = "confidence-high"
+                                label = "매우 정확 (FAQ 일치)"
+                            elif confidence_score >= 70:
+                                color_class = "confidence-med"
+                                label = "보통 (FAQ 기반 유추)"
+                            else:
+                                color_class = "confidence-low"
+                                label = "낮음 (일반 지식)"
+                            
+                            st.caption(f"🤖 AI 답변 신뢰도: <span class='{color_class}'>{confidence_score}%</span> ({label})", unsafe_allow_html=True)
+                            st.progress(confidence_score / 100)
+
+                        # 세션에 저장 (Clean Response로 저장)
+                        st.session_state['messages'].append({"role": "assistant", "content": clean_response})
                     except Exception as e:
                         st.error(f"Error: {e}")
