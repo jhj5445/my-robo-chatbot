@@ -24,7 +24,7 @@ else:
 if api_keys:
     genai.configure(api_key=api_keys[0])
 
-def generate_content_with_rotation(prompt, model_name="gemini-1.5-flash"):
+def generate_content_with_rotation(prompt, model_name="gemini-3-flash-preview"):
     if not api_keys:
         raise Exception("API 키가 설정되지 않았습니다.")
     last_error = None
