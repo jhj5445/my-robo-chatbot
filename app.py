@@ -31,7 +31,7 @@ else:
 if api_keys:
     genai.configure(api_key=api_keys[0])
 
-def generate_content_with_rotation(prompt, model_name="gemini-1.5-flash"):
+def generate_content_with_rotation(prompt, model_name="gemini-3-flash-preview"):
     """
     API 키를 순환하며 컨텐츠 생성을 시도합니다.
     Rate Limit 발생 시 다음 키로 자동 전환합니다.
@@ -270,7 +270,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 # API Key Rotation 적용
                 # 모델명은 최신 모델 사용 권장 (gemini-1.5-flash)
                 full_prompt = f"질문: {last_user_msg}\n\n답변 (한국어로, 금융 전문가처럼):"
-                response_text = generate_content_with_rotation(full_prompt, model_name="gemini-1.5-flash")
+                response_text = generate_content_with_rotation(full_prompt, model_name="gemini-3-flash-preview")
                 
                 st.markdown(response_text)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
