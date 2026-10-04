@@ -1,3 +1,672 @@
 {
-  "test": 1
+  "inventory": [
+    {
+      "category": "단백질",
+      "name": "소고기",
+      "initial_stock": 12,
+      "current_stock": 11
+    },
+    {
+      "category": "단백질",
+      "name": "닭고기",
+      "initial_stock": 4,
+      "current_stock": 3
+    },
+    {
+      "category": "단백질",
+      "name": "달걀",
+      "initial_stock": 6,
+      "current_stock": 5
+    },
+    {
+      "category": "채소류",
+      "name": "무",
+      "initial_stock": 6,
+      "current_stock": 4
+    },
+    {
+      "category": "채소류",
+      "name": "브로콜리",
+      "initial_stock": 3,
+      "current_stock": 2
+    },
+    {
+      "category": "채소류",
+      "name": "양배추",
+      "initial_stock": 12,
+      "current_stock": 10
+    },
+    {
+      "category": "채소류",
+      "name": "시금치",
+      "initial_stock": 8,
+      "current_stock": 7
+    },
+    {
+      "category": "채소류",
+      "name": "당근",
+      "initial_stock": 13,
+      "current_stock": 12
+    },
+    {
+      "category": "채소류",
+      "name": "아욱",
+      "initial_stock": 9,
+      "current_stock": 8
+    },
+    {
+      "category": "채소류",
+      "name": "양파",
+      "initial_stock": 4,
+      "current_stock": 4
+    },
+    {
+      "category": "채소류",
+      "name": "청경채",
+      "initial_stock": 7,
+      "current_stock": 7
+    },
+    {
+      "category": "채소류",
+      "name": "적채",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "채소류",
+      "name": "애호박",
+      "initial_stock": 0,
+      "current_stock": 13
+    },
+    {
+      "category": "채소류",
+      "name": "고구마",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "채소류",
+      "name": "비트",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "채소류",
+      "name": "단호박",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "채소류",
+      "name": "사과",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "채소류",
+      "name": "토마토",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "채소류",
+      "name": "오이",
+      "initial_stock": 0,
+      "current_stock": 0
+    },
+    {
+      "category": "곡류",
+      "name": "쌀",
+      "initial_stock": 45,
+      "current_stock": 42
+    },
+    {
+      "category": "곡류",
+      "name": "퀴노아",
+      "initial_stock": 15,
+      "current_stock": 14
+    },
+    {
+      "category": "곡류",
+      "name": "오트밀",
+      "initial_stock": 15,
+      "current_stock": 14
+    },
+    {
+      "category": "곡류",
+      "name": "보리",
+      "initial_stock": 15,
+      "current_stock": 14
+    }
+  ],
+  "meals": [
+    {
+      "date": "10월4일",
+      "day_of_week": "일",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "달걀",
+        "브로콜리",
+        "양배추",
+        "무"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "애호박",
+        "시금치",
+        "당근"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "닭고기",
+        "아욱",
+        "무",
+        "양배추"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "무·양배추 하루 2회 소진"
+    },
+    {
+      "date": "10월5일",
+      "day_of_week": "월",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "달걀",
+        "브로콜리",
+        "양배추",
+        "무"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "애호박",
+        "시금치",
+        "당근"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "닭고기",
+        "아욱",
+        "무",
+        "양배추"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": ""
+    },
+    {
+      "date": "10월6일",
+      "day_of_week": "화",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "달걀",
+        "브로콜리",
+        "양배추",
+        "무"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "애호박",
+        "시금치",
+        "당근"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "닭고기",
+        "아욱",
+        "무",
+        "양배추"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 브로콜리(아침), 무(저녁) 큐브 소진"
+    },
+    {
+      "date": "10월7일",
+      "day_of_week": "수",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "닭고기",
+        "적채",
+        "사과",
+        "고구마"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "무",
+        "아욱",
+        "양파"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "시금치",
+        "당근",
+        "청경채",
+        "애호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 닭고기(아침) 큐브 소진 / 식단 교체"
+    },
+    {
+      "date": "10월8일",
+      "day_of_week": "목",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "닭고기",
+        "적채",
+        "사과",
+        "고구마"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "무",
+        "아욱",
+        "양파"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "시금치",
+        "당근",
+        "청경채",
+        "애호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": ""
+    },
+    {
+      "date": "10월9일",
+      "day_of_week": "금",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "닭고기",
+        "적채",
+        "사과",
+        "고구마"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "무",
+        "아욱",
+        "양파"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "시금치",
+        "당근",
+        "청경채",
+        "애호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "한글날"
+    },
+    {
+      "date": "10월10일",
+      "day_of_week": "토",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "닭고기",
+        "적채",
+        "사과",
+        "고구마"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "무",
+        "아욱",
+        "양파"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "시금치",
+        "당근",
+        "청경채",
+        "애호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 양파(점심) 큐브 소진"
+    },
+    {
+      "date": "10월11일",
+      "day_of_week": "일",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "닭고기",
+        "적채",
+        "사과",
+        "고구마"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "소고기",
+        "무",
+        "아욱",
+        "양파"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "시금치",
+        "당근",
+        "청경채",
+        "애호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 시금치(저녁) 소진 완료"
+    },
+    {
+      "date": "10월12일",
+      "day_of_week": "월",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "소고기",
+        "비트",
+        "애호박",
+        "아욱"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "달걀",
+        "청경채",
+        "브로콜리",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "닭고기",
+        "양배추",
+        "양파",
+        "단호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 아욱(아침) 큐브 소진 / 식단 교체"
+    },
+    {
+      "date": "10월13일",
+      "day_of_week": "화",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "소고기",
+        "비트",
+        "애호박",
+        "아욱"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "달걀",
+        "청경채",
+        "브로콜리",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "닭고기",
+        "양배추",
+        "양파",
+        "단호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 청경채(점심) 큐브 소진"
+    },
+    {
+      "date": "10월14일",
+      "day_of_week": "수",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "소고기",
+        "비트",
+        "애호박",
+        "아욱"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "달걀",
+        "청경채",
+        "브로콜리",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "닭고기",
+        "양배추",
+        "양파",
+        "단호박"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": ""
+    },
+    {
+      "date": "10월15일",
+      "day_of_week": "목",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "소고기",
+        "당근",
+        "브로콜리",
+        "토마토"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "닭고기",
+        "비트",
+        "고구마",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "청경채",
+        "단호박",
+        "아욱",
+        "무"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "★ 소고기(아침) 큐브 소진 / 식단 교체"
+    },
+    {
+      "date": "10월16일",
+      "day_of_week": "금",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "소고기",
+        "당근",
+        "브로콜리",
+        "토마토"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "닭고기",
+        "비트",
+        "고구마",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "청경채",
+        "단호박",
+        "아욱",
+        "무"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": ""
+    },
+    {
+      "date": "10월17일",
+      "day_of_week": "토",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "적채",
+        "오이",
+        "단호박",
+        "브로콜리"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "닭고기",
+        "비트",
+        "고구마",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "소고기",
+        "브로콜리",
+        "당근",
+        "토마토"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "식단 교체 (오이 추가)"
+    },
+    {
+      "date": "10월18일",
+      "day_of_week": "일",
+      "morning": [
+        "쌀",
+        "퀴노아",
+        "적채",
+        "오이",
+        "단호박",
+        "브로콜리"
+      ],
+      "lunch": [
+        "쌀",
+        "오트밀",
+        "닭고기",
+        "비트",
+        "고구마",
+        "적채"
+      ],
+      "dinner": [
+        "쌀",
+        "보리",
+        "소고기",
+        "브로콜리",
+        "당근",
+        "토마토"
+      ],
+      "morning_eaten": false,
+      "lunch_eaten": false,
+      "dinner_eaten": false,
+      "note": "15일 계획 완료"
+    }
+  ],
+  "planner": [
+    {
+      "stage": "1차 (긴급)",
+      "d_day": "10월 5일(월) ~ 6일(화)",
+      "items": "무, 브로콜리\n(+적채, 사과, 고구마)",
+      "shortage": "무 +7개 / 브로콜리 +9개\n(신규 채소 각 5~14개)",
+      "tray": "12구 틀 1~2판씩",
+      "shopping": "무, 브로콜리, 적채, 사과, 밤고구마",
+      "status": "대기 중"
+    },
+    {
+      "stage": "2차",
+      "d_day": "10월 6일(화) ~ 7일(수)",
+      "items": "닭고기",
+      "shortage": "닭고기 +11개",
+      "tray": "닭안심 1팩 (12~15구 1판)",
+      "shopping": "무항생제 닭안심 / 가슴살",
+      "status": "대기 중"
+    },
+    {
+      "stage": "3차",
+      "d_day": "10월 9일(금) ~ 10일(토)",
+      "items": "양파, 청경채, 아욱\n(+비트, 단호박)",
+      "shortage": "양파 +4개 / 청경채 +3개\n아욱 +4개 (비트·단호박 각 7개)",
+      "tray": "6~12구 틀 1판씩",
+      "shopping": "양파, 청경채, 아욱, 비트, 단호박",
+      "status": "대기 중"
+    },
+    {
+      "stage": "4차",
+      "d_day": "10월 14일(수)",
+      "items": "소고기\n(+토마토, 오이)",
+      "shortage": "소고기 +3개\n(토마토 4개, 오이 2개)",
+      "tray": "소고기 6~12구 1판\n토마토/오이 소량",
+      "shopping": "우둔살/안심, 완숙토마토, 백오이",
+      "status": "대기 중"
+    }
+  ],
+  "production_logs": [
+    {
+      "date": "2026-10-04",
+      "ingredient": "애호박",
+      "category": "채소류",
+      "quantity": 14,
+      "exp_date": "2026-10-13",
+      "memo": ""
+    }
+  ]
 }
