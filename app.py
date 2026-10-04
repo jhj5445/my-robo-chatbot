@@ -88,13 +88,46 @@ st.markdown("""
         font-size: 0.92rem;
         color: #1e40af;
     }
+
+    /* 📱 Mobile Optimized Media Queries */
+    @media (max-width: 768px) {
+        .block-container {
+            padding: 0.8rem 0.6rem 3rem 0.6rem !important;
+        }
+        .mobile-ip-box {
+            display: none !important;
+        }
+        .stButton button {
+            min-height: 42px !important;
+            font-size: 0.92rem !important;
+            border-radius: 8px !important;
+        }
+        .tag-badge {
+            font-size: 0.8rem !important;
+            padding: 2px 6px !important;
+        }
+        .card-urgent, .card-warning, .card-good {
+            padding: 10px !important;
+            margin-bottom: 8px !important;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            padding: 6px 8px !important;
+            font-size: 0.84rem !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
+# Hybrid Storage Manager (GitHub API & Google Sheets & Local)
 # ==========================================
-# Google Sheets (Apps Script Web App) & Local Hybrid Storage Manager
-# ==========================================
+import base64
+import requests
+
+DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxUVJye2HTxhCHH08VnrhhzK9e7a3pfpK7-nGYQQX9wAqFIkxJbCidNUiDef7lsbabxhg/exec"
 CONFIG_FILE = "config.json"
 
 def load_config():
@@ -104,66 +137,149 @@ def load_config():
                 return json.load(f)
         except Exception:
             pass
-    return {}
+    return {"apps_script_url": DEFAULT_APPS_SCRIPT_URL}
 
 def save_config(cfg):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
+class GitHubBackend:
+    def __init__(self, repo, token, path="data.json"):
+        self.repo = repo.strip()
+        self.token = token.strip()
+        self.path = path
+        self.base_url = f"https://api.github.com/repos/{self.repo}/contents/{self.path}"
+        self.headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        self.cached_sha = None
+
+    def load(self):
+        try:
+            res = requests.get(self.base_url, headers=self.headers, timeout=6)
+            if res.status_code == 200:
+                info = res.json()
+                self.cached_sha = info.get("sha")
+                content_str = base64.b64decode(info["content"]).decode("utf-8")
+                return json.loads(content_str)
+        except Exception:
+            pass
+        return None
+
+    def save(self, data):
+        try:
+            content_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+            b64_content = base64.b64encode(content_bytes).decode("utf-8")
+            for attempt in range(2):
+                sha = self.cached_sha
+                if not sha or attempt > 0:
+                    res_get = requests.get(self.base_url, headers=self.headers, timeout=5)
+                    if res_get.status_code == 200:
+                        sha = res_get.json().get("sha")
+                        self.cached_sha = sha
+
+                now_str = get_now().strftime("%Y-%m-%d %H:%M:%S")
+                payload = {
+                    "message": f"👶 이유식 큐브 데이터 업데이트 ({now_str})",
+                    "content": b64_content
+                }
+                if sha:
+                    payload["sha"] = sha
+
+                res = requests.put(self.base_url, json=payload, headers=self.headers, timeout=8)
+                if res.status_code in [200, 201]:
+                    self.cached_sha = res.json().get("content", {}).get("sha")
+                    return True, "성공"
+                elif res.status_code == 409:
+                    self.cached_sha = None
+                    continue
+                elif res.status_code == 403:
+                    return False, "권한 오류 (403): GitHub 토큰에 쓰기 권한이 없습니다. Fine-grained 토큰 설정의 'Repository permissions' -> 'Contents'를 [Read and write]로 변경하시거나, Classic 토큰(ghp_)으로 'repo'를 체크하여 발급해주세요."
+                else:
+                    return False, f"HTTP {res.status_code}: {res.text[:100]}"
+            return False, "동시성 충돌"
+        except Exception as e:
+            return False, str(e)
+
 class StorageManager:
     def __init__(self):
+        self.github = None
         self.apps_script_url = None
-        self.is_connected = False
+        self.mode = "local"
         self._init_backend()
 
     def _init_backend(self):
         cfg = load_config()
-        url = cfg.get("apps_script_url", "")
-        if not url and "apps_script_url" in st.secrets:
-            url = st.secrets["apps_script_url"]
+        
+        # 1. GitHub API Priority
+        gh_repo = cfg.get("github_repo", "")
+        gh_token = cfg.get("github_token", "")
+        if not gh_repo or not gh_token:
+            try:
+                gh_repo = gh_repo or st.secrets.get("github_repo", "")
+                gh_token = gh_token or st.secrets.get("github_token", "")
+            except Exception:
+                pass
+
+        if gh_repo and gh_token:
+            self.github = GitHubBackend(gh_repo, gh_token)
+            self.mode = "github"
+            return
+
+        # 2. Google Apps Script Web App
+        url = cfg.get("apps_script_url", "") or st.secrets.get("apps_script_url", DEFAULT_APPS_SCRIPT_URL)
         if url:
             self.apps_script_url = url.strip()
-            self.is_connected = True
+            self.mode = "apps_script"
 
     def load_data(self):
-        # 1. Try Apps Script Web App
-        if self.apps_script_url:
+        if self.mode == "github" and self.github:
+            gh_data = self.github.load()
+            if gh_data:
+                with open(DATA_FILE, "w", encoding="utf-8") as f:
+                    json.dump(gh_data, f, ensure_ascii=False, indent=2)
+                return gh_data
+
+        if self.mode == "apps_script" and self.apps_script_url:
             try:
-                import requests
                 res = requests.get(self.apps_script_url, timeout=5)
                 if res.status_code == 200 and res.text.strip():
                     raw = res.json()
                     if isinstance(raw, dict) and "meals" in raw and "inventory" in raw:
-                        # Cache to local file
                         with open(DATA_FILE, "w", encoding="utf-8") as f:
                             json.dump(raw, f, ensure_ascii=False, indent=2)
                         return raw
-            except Exception as e:
-                st.sidebar.warning(f"구글 시트 읽기 실패 (로컬 백업 사용): {e}")
+            except Exception:
+                pass
 
-        # 2. Local fallback
         if not os.path.exists(DATA_FILE):
             return {"inventory": [], "meals": [], "planner": [], "production_logs": []}
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def save_data(self, data):
-        # Always save locally
+        # Always cache locally
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        # Sync to Google Apps Script Web App
-        if self.apps_script_url:
+        if self.mode == "github" and self.github:
+            ok, msg = self.github.save(data)
+            return ok, msg
+
+        if self.mode == "apps_script" and self.apps_script_url:
             try:
-                import requests
                 requests.post(
                     self.apps_script_url,
                     data=json.dumps(data, ensure_ascii=False).encode('utf-8'),
                     headers={"Content-Type": "application/json"},
                     timeout=5
                 )
+                return True, "성공"
             except Exception as e:
-                st.sidebar.error(f"구글 시트 동기화 실패: {e}")
+                return False, str(e)
+
+        return True, "로컬 저장"
 
 storage = StorageManager()
 data = storage.load_data()
@@ -181,63 +297,75 @@ def get_local_ip():
     except Exception:
         return "172.30.1.50"
 
-# Sidebar: Easy Google Sheets Setup & Status
+# Sidebar: Storage Sync Settings
 with st.sidebar:
-    st.header("☁️ 구글 시트 간편 연동 (대안 2)")
+    st.header("☁️ 클라우드 데이터베이스 연동")
     cfg = load_config()
-    cur_url = cfg.get("apps_script_url", "")
 
-    if storage.apps_script_url:
-        st.success("🟢 **Google Sheets 실시간 연동 중!**\n\n모든 큐브 변경/소진 내역이 내 구글 스프레드시트에 영구 저장됩니다.")
-        c_ref, c_disc = st.columns(2)
+    if storage.mode == "github" and storage.github:
+        st.success(f"🟢 **GitHub 저장소 실시간 연동 중!**\n\n저장소: `{storage.github.repo}`\n\n모든 큐브 변경/소진 내역이 `data.json`에 **자동 커밋**됩니다.")
+        c_save, c_ref = st.columns(2)
+        with c_save:
+            if st.button("🐙 GitHub에 저장", type="primary", use_container_width=True, key="side_save_btn"):
+                with st.spinner("GitHub 커밋 푸시 중..."):
+                    ok, msg = storage.save_data(data)
+                if ok:
+                    st.toast("✅ GitHub에 커밋 완료!")
+                    st.success(f"✅ 커밋 완료! ({get_now().strftime('%H:%M:%S')})")
+                else:
+                    st.error(f"❌ 실패: {msg}")
         with c_ref:
-            if st.button("🔄 시트 불러오기"):
+            if st.button("🔄 최신 불러오기", use_container_width=True, key="side_reload_btn"):
                 st.rerun()
-        with c_disc:
-            if st.button("🔌 연동 해제"):
-                cfg["apps_script_url"] = ""
-                save_config(cfg)
-                storage.apps_script_url = ""
-                st.rerun()
-    else:
-        st.info("🟡 **로컬 저장 모드**\n\n현재 로컬 파일에 저장 중입니다. 아래에서 구글 시트 웹앱 URL을 입력하면 영구 클라우드 저장이 시작됩니다.")
 
-    with st.expander("⚡ 1분 만에 구글 시트 연동하기 (클릭)", expanded=not bool(cur_url)):
-        st.markdown("""
-        **순서대로 따라해 보세요:**
-        1. [sheets.new](https://sheets.new) 접속 (새 시트 생성)
-        2. 메뉴: **확장 프로그램** ➔ **Apps Script**
-        3. 아래 코드 복사해 붙여넣고 **저장(Ctrl+S)**:
-        ```javascript
-        function doGet(e) {
-          var ss = SpreadsheetApp.getActiveSpreadsheet();
-          var sheet = ss.getSheetByName("db_state") || ss.getActiveSheet();
-          var val = sheet.getRange("A1").getValue();
-          return ContentService.createTextOutput(val || "{}").setMimeType(ContentService.MimeType.JSON);
-        }
-        function doPost(e) {
-          var ss = SpreadsheetApp.getActiveSpreadsheet();
-          var sheet = ss.getSheetByName("db_state") || ss.insertSheet("db_state");
-          sheet.getRange("A1").setValue(e.postData.contents);
-          return ContentService.createTextOutput(JSON.stringify({status: "ok"})).setMimeType(ContentService.MimeType.JSON);
-        }
-        ```
-        4. 우측 상단 **[배포] ➔ [새 배포]**:
-           * 유형: **웹 앱**
-           * 액세스 권한: **모든 사용자(Anyone)** ⚠️
-        5. 배포 후 나오는 **웹 앱 URL**을 아래에 붙여넣기!
-        """)
-        new_url = st.text_input("구글 웹앱 URL 붙여넣기", value=cur_url, placeholder="https://script.google.com/macros/s/.../exec")
-        if st.button("🔗 연동 저장 & 즉시 동기화", type="primary"):
-            if new_url.strip():
-                cfg["apps_script_url"] = new_url.strip()
-                save_config(cfg)
-                storage.apps_script_url = new_url.strip()
+        if st.button("🔌 GitHub 연동 해제", key="side_disc_gh"):
+            cfg["github_token"] = ""
+            cfg["github_repo"] = ""
+            save_config(cfg)
+            storage.mode = "local"
+            storage.github = None
+            st.rerun()
+
+    elif storage.mode == "apps_script":
+        st.info("🟢 **구글 시트 연동 모드 작동 중**")
+        c_save, c_ref = st.columns(2)
+        with c_save:
+            if st.button("☁️ 시트에 저장", type="primary", use_container_width=True, key="side_save_gs"):
                 storage.save_data(data)
-                st.success("🎉 구글 시트와 성공적으로 연결되었습니다!")
+                st.toast("✅ 구글 시트에 저장 완료!")
+                st.success(f"✅ 저장 완료 ({get_now().strftime('%H:%M:%S')})")
+        with c_ref:
+            if st.button("🔄 시트 불러오기", use_container_width=True, key="side_reload_gs"):
                 st.rerun()
+
+    # Expandable GitHub Connection Setup
+    with st.expander("🐙 GitHub 저장소 연동 설정 (추천 ⭐)", expanded=(storage.mode != "github")):
+        st.markdown("""
+        **GitHub 연동 방법:**
+        - **방법 1 (가장 간단 - Classic 토큰 추천 ⭐):**  
+          1. [github.com/settings/tokens](https://github.com/settings/tokens) 접속  
+          2. **Generate new token (classic)** 클릭  
+          3. **`repo`** (최상단 체크박스) 체크 후 하단 발급 ➔ 토큰(`ghp_...`) 복사
+        - **방법 2 (현재 Fine-grained 토큰 수정 시):**  
+          - 기존 토큰 페이지에서 **Repository permissions** ➔ **`Contents`**를 **[Read and write]**로 변경하고 저장하시면 즉시 정상 작동합니다!
+        """)
+        in_repo = st.text_input("GitHub 저장소 (아이디/저장소명)", value=cfg.get("github_repo", ""), placeholder="예: username/baby-food")
+        in_token = st.text_input("GitHub 토큰 (ghp_... 또는 github_pat_...)", value=cfg.get("github_token", ""), type="password", placeholder="ghp_xxxxxxxxxxxx")
+        if st.button("🔗 GitHub 연동하기", type="primary", key="btn_connect_github"):
+            if in_repo.strip() and in_token.strip():
+                cfg["github_repo"] = in_repo.strip()
+                cfg["github_token"] = in_token.strip()
+                save_config(cfg)
+                storage._init_backend()
+                # Test save
+                ok, msg = storage.save_data(data)
+                if ok:
+                    st.success("🎉 GitHub와 성공적으로 연결되어 커밋이 완료되었습니다!")
+                    st.rerun()
+                else:
+                    st.error(f"연결 오류: {msg}")
             else:
-                st.warning("URL을 입력해주세요.")
+                st.warning("저장소 이름과 토큰을 모두 입력해주세요.")
 
     st.divider()
     st.caption(f"🕒 현재 기준 시각: **{now.strftime('%Y-%m-%d %H:%M')} (KST)**")
@@ -444,17 +572,19 @@ def calculate_system_state(data, auto_mode=True):
 
 # Header
 local_ip = get_local_ip()
-col_title, col_ip = st.columns([2, 1])
+col_title, col_top_btn = st.columns([3, 1])
 with col_title:
-    st.title("🥣 우리 아기 이유식 & 큐브 플래너")
-with col_ip:
-    st.markdown(f"""
-    <div class="mobile-ip-box">
-        📱 <b>스마트폰으로 접속하기</b><br>
-        로컬 Wi-Fi 주소:<br>
-        <code style="color:#ffffff; background:#4338ca; padding:2px 6px; border-radius:4px;">http://{local_ip}:8501</code>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("<h2 style='margin:0; padding:4px 0; font-size:1.45rem;'>🥣 아기 이유식 & 큐브 플래너</h2>", unsafe_allow_html=True)
+with col_top_btn:
+    top_label = "🐙 Git 저장" if storage.mode == "github" else "☁️ 저장"
+    if st.button(top_label, key="top_quick_save", use_container_width=True):
+        with st.spinner("저장 중..."):
+            ok, msg = storage.save_data(data)
+        if ok:
+            st.toast("✅ 실시간 저장 완료!")
+            st.success(f"✅ 저장 완료 ({get_now().strftime('%H:%M:%S')})")
+        else:
+            st.error(f"❌ 실패: {msg}")
 
 if "auto_deduct" not in st.session_state:
     st.session_state.auto_deduct = True
@@ -886,38 +1016,54 @@ with tab5:
     st.dataframe(table_rows, use_container_width=True, hide_index=True)
 
     st.divider()
-    if st.button("📥 현재 상태 엑셀(XLSX)로 내보내기/저장"):
-        try:
-            import openpyxl
-            wb = openpyxl.Workbook()
-            ws1 = wb.active
-            ws1.title = "현재재고_및_소진일"
-            ws1.append(["분류", "품목", "현재실재고", "남은필요량", "예상잔여", "예상소진시점"])
-            for item in data.get("inventory", []):
-                n = item["name"]
-                t_info = timeline_results.get(n, {})
-                s = t_info.get("stock", 0)
-                nd = t_info.get("future_need", 0)
-                dep = t_info.get("depletion_desc", "-")
-                ws1.append([item["category"], n, s, nd, s - nd, dep])
-            
-            ws2 = wb.create_sheet(title="식단표")
-            ws2.append(["날짜", "요일", "아침", "점심", "저녁", "아침완료", "점심완료", "저녁완료", "비고"])
-            for m in data.get("meals", []):
-                m_eaten, _ = get_meal_eaten_status(m, "morning", st.session_state.auto_deduct)
-                l_eaten, _ = get_meal_eaten_status(m, "lunch", st.session_state.auto_deduct)
-                d_eaten, _ = get_meal_eaten_status(m, "dinner", st.session_state.auto_deduct)
-                ws2.append([
-                    m["date"], m["day_of_week"],
-                    "\n".join(m.get("morning", [])),
-                    "\n".join(m.get("lunch", [])),
-                    "\n".join(m.get("dinner", [])),
-                    "완료" if m_eaten else "미완료",
-                    "완료" if l_eaten else "미완료",
-                    "완료" if d_eaten else "미완료",
-                    m.get("note", "")
-                ])
-            wb.save("이유식_식단_및_큐브관리_최신현황.xlsx")
-            st.success("✅ '이유식_식단_및_큐브관리_최신현황.xlsx' 파일로 저장 완료되었습니다!")
-        except Exception as e:
-            st.error(f"엑셀 저장 오류: {e}")
+    st.subheader("💾 데이터 내보내기 & 영구 저장")
+    c_save_sheet, c_save_excel = st.columns(2)
+
+    with c_save_sheet:
+        save_btn_label = "🐙 현재 상태 GitHub(data.json)에 커밋하기" if storage.mode == "github" else "☁️ 현재 상태 클라우드에 저장하기"
+        if st.button(save_btn_label, type="primary", use_container_width=True, key="tab5_cloud_save"):
+            with st.spinner("클라우드 저장소에 커밋/동기화 중..."):
+                ok, msg = storage.save_data(data)
+            if ok:
+                target_str = f"GitHub({storage.github.repo})" if storage.mode == "github" else "클라우드"
+                st.toast(f"✅ {target_str}에 저장되었습니다!")
+                st.success(f"✅ {target_str} 저장/커밋 완료! ({get_now().strftime('%Y-%m-%d %H:%M:%S')})")
+            else:
+                st.error(f"❌ 저장 실패: {msg}")
+
+    with c_save_excel:
+        if st.button("📥 엑셀(XLSX) 파일로 다운로드/저장", use_container_width=True, key="tab5_excel_save"):
+            try:
+                import openpyxl
+                wb = openpyxl.Workbook()
+                ws1 = wb.active
+                ws1.title = "현재재고_및_소진일"
+                ws1.append(["분류", "품목", "현재실재고", "남은필요량", "예상잔여", "예상소진시점"])
+                for item in data.get("inventory", []):
+                    n = item["name"]
+                    t_info = timeline_results.get(n, {})
+                    s = t_info.get("stock", 0)
+                    nd = t_info.get("future_need", 0)
+                    dep = t_info.get("depletion_desc", "-")
+                    ws1.append([item["category"], n, s, nd, s - nd, dep])
+                
+                ws2 = wb.create_sheet(title="식단표")
+                ws2.append(["날짜", "요일", "아침", "점심", "저녁", "아침완료", "점심완료", "저녁완료", "비고"])
+                for m in data.get("meals", []):
+                    m_eaten, _ = get_meal_eaten_status(m, "morning", st.session_state.auto_deduct)
+                    l_eaten, _ = get_meal_eaten_status(m, "lunch", st.session_state.auto_deduct)
+                    d_eaten, _ = get_meal_eaten_status(m, "dinner", st.session_state.auto_deduct)
+                    ws2.append([
+                        m["date"], m["day_of_week"],
+                        "\n".join(m.get("morning", [])),
+                        "\n".join(m.get("lunch", [])),
+                        "\n".join(m.get("dinner", [])),
+                        "완료" if m_eaten else "미완료",
+                        "완료" if l_eaten else "미완료",
+                        "완료" if d_eaten else "미완료",
+                        m.get("note", "")
+                    ])
+                wb.save("이유식_식단_및_큐브관리_최신현황.xlsx")
+                st.success("✅ '이유식_식단_및_큐브관리_최신현황.xlsx' 파일로 저장 완료되었습니다!")
+            except Exception as e:
+                st.error(f"엑셀 저장 오류: {e}")
