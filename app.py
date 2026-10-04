@@ -274,6 +274,10 @@ class StorageManager:
             return json.load(f)
 
     def save_data(self, data):
+        # Update session cache
+        if "app_data" in st.session_state:
+            st.session_state.app_data = data
+
         # Always cache locally
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -297,20 +301,15 @@ class StorageManager:
         return True, "로컬 저장"
 
 storage = StorageManager()
-data = storage.load_data()
+
+# Session State Cache for fast responsive navigation
+if "app_data" not in st.session_state:
+    st.session_state.app_data = storage.load_data()
+
+data = st.session_state.app_data
 
 now = get_now()
 current_year = now.year
-
-def get_local_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "172.30.1.50"
 
 # Sidebar: Storage Sync Settings
 with st.sidebar:
@@ -331,6 +330,7 @@ with st.sidebar:
                     st.error(f"❌ 실패: {msg}")
         with c_ref:
             if st.button("🔄 최신 불러오기", use_container_width=True, key="side_reload_btn"):
+                st.session_state.app_data = storage.load_data()
                 st.rerun()
 
         if st.button("🔌 GitHub 연동 해제", key="side_disc_gh"):
@@ -736,7 +736,6 @@ def calculate_system_state(data, auto_mode=True):
     return timeline_results, shortages, consumed_counts, surplus_items
 
 # Header
-local_ip = get_local_ip()
 col_title, col_top_btn = st.columns([3, 1])
 with col_title:
     st.markdown("<h2 style='margin:0; padding:4px 0; font-size:1.45rem;'>🥣 아기 이유식 & 큐브 플래너</h2>", unsafe_allow_html=True)
