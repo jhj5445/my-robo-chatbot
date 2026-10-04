@@ -28,7 +28,7 @@
       "category": "채소류",
       "name": "브로콜리",
       "initial_stock": 3,
-      "current_stock": 2
+      "current_stock": 12
     },
     {
       "category": "채소류",
@@ -189,7 +189,8 @@
         "소고기",
         "애호박",
         "시금치",
-        "당근"
+        "당근",
+        "브로콜리"
       ],
       "dinner": [
         "쌀",
