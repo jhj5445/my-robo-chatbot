@@ -461,18 +461,27 @@ def evaluate_meal_combo(ingredients):
     goldens = []
     
     cruc_in_meal = ing_set.intersection(CRUCIFEROUS_VEG)
+    has_cruc_alert = False
     if len(cruc_in_meal) >= 2:
-        names = ", ".join(cruc_in_meal)
-        alerts.append("십자화과 채소 중복 (" + names + "): 가스 유발 가능성 있어 한 끼 1종 권장")
+        names = "+".join(cruc_in_meal)
+        alerts.append(f"가스 주의: 십자화과 중복 ({names})")
+        has_cruc_alert = True
         
     nitrate_in_meal = ing_set.intersection(NITRATE_VEG)
+    has_nitrate_alert = False
     if len(nitrate_in_meal) >= 2:
-        names = ", ".join(nitrate_in_meal)
-        alerts.append("질산염 채소 중복 (" + names + "): 한 끼 몰아넣지 않고 끼니별 분산 권장")
+        names = "+".join(nitrate_in_meal)
+        alerts.append(f"질산염 주의: 질산염 채소 중복 ({names})")
+        has_nitrate_alert = True
         
     for pair, reason in DISCOURAGED_PAIRS:
         if pair.issubset(ing_set):
-            alerts.append(reason)
+            # Avoid duplicate warnings if cruciferous or nitrate is already flagged
+            if has_cruc_alert and pair.issubset(CRUCIFEROUS_VEG):
+                continue
+            if has_nitrate_alert and pair.issubset(NITRATE_VEG):
+                continue
+            alerts.append(f"조합 주의: {reason.split(' (')[0]}")
             
     for combo, desc in GOLDEN_COMBOS:
         if combo.issubset(ing_set):
@@ -497,6 +506,65 @@ def simulate_topping_addition(current_ingredients, candidate):
         return "good", "🌱 [순한 채소] 소화 편안한 추천 재료"
         
     return "neutral", "✅ 무난한 조합"
+
+def get_best_topping_recommendation(current_ingredients, inventory, surplus_items):
+    curr_set = set(current_ingredients)
+    curr_res = evaluate_meal_combo(current_ingredients)
+    surplus_map = {s["name"]: s["surplus"] for s in surplus_items}
+    candidates = []
+    
+    for item in inventory:
+        ing_name = item["name"]
+        stock = item.get("current_stock", 0)
+        if stock <= 0:
+            continue
+        if ing_name in curr_set:
+            continue
+            
+        test_ings = list(current_ingredients) + [ing_name]
+        test_res = evaluate_meal_combo(test_ings)
+        
+        # Must not trigger new alerts
+        new_alerts = [a for a in test_res["alerts"] if a not in curr_res["alerts"]]
+        if new_alerts:
+            continue
+            
+        new_goldens = [g for g in test_res["goldens"] if g not in curr_res["goldens"]]
+        score = 0
+        rec_type = "safe"
+        rec_desc = ""
+        
+        if new_goldens:
+            score += 120
+            rec_type = "golden"
+            rec_desc = "황금 궁합 완성: " + new_goldens[0].split(":")[0].replace("🥩 ", "").replace("🥕 ", "").replace("🍗 ", "").replace("🧅 ", "").replace("🥦 ", "").replace("🐟 ", "")
+        elif ing_name in GENTLE_VEG:
+            score += 60
+            rec_type = "gentle"
+            rec_desc = "소화 편안한 순한 채소"
+        else:
+            score += 20
+            rec_type = "safe"
+            rec_desc = "궁합 좋은 안전한 재료"
+            
+        # Surplus bonus: heavily prioritize surplus cubes!
+        if ing_name in surplus_map:
+            score += min(surplus_map[ing_name] * 8, 40)
+            
+        score += min(stock, 15)
+        
+        candidates.append({
+            "name": ing_name,
+            "category": item.get("category", "채소류"),
+            "stock": stock,
+            "surplus": surplus_map.get(ing_name, 0),
+            "score": score,
+            "type": rec_type,
+            "desc": rec_desc
+        })
+        
+    candidates.sort(key=lambda x: -x["score"])
+    return candidates[0] if candidates else None
 
 # Calculate Chronological Depletion & Deadlines with Automatic Deduction
 def calculate_system_state(data, auto_mode=True):
@@ -727,107 +795,75 @@ with tab1:
             storage.save_data(data)
             st.rerun()
 
-        # Morning
-        with col_m:
-            st.markdown("### 🌅 아침 식단")
-            ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in meal_entry.get("morning", [])])
-            st.markdown(ing_html, unsafe_allow_html=True)
-            
-            # Nutritional combo evaluation
-            combo_m = evaluate_meal_combo(meal_entry.get("morning", []))
-            for g in combo_m["goldens"]:
-                st.markdown(f'<div style="background-color:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#166534;">🌟 <b>황금 궁합:</b> {g}</div>', unsafe_allow_html=True)
-            for a in combo_m["alerts"]:
-                st.markdown(f'<div style="background-color:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#9a3412;">⚠️ <b>조합 주의:</b> {a}</div>', unsafe_allow_html=True)
+        # Slot card renderer with compact styling and one-click topping recommendation
+        def render_meal_slot_card(col_obj, slot_key, slot_name, slot_short, meal_obj):
+            with col_obj:
+                ings = meal_obj.get(slot_key, [])
+                st.markdown(f"### {slot_name}")
+                ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in ings])
+                st.markdown(ing_html, unsafe_allow_html=True)
+                
+                # Subtle compact pill tags for Golden / Alert combos
+                combo_res = evaluate_meal_combo(ings)
+                pill_html = ""
+                for g in combo_res["goldens"]:
+                    short_g = g.split(":")[0].strip()
+                    pill_html += f'<span style="display:inline-block; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:12px; padding:2px 8px; font-size:0.75rem; font-weight:600; margin-right:4px; margin-top:4px;">✨ {short_g}</span>'
+                for a in combo_res["alerts"]:
+                    pill_html += f'<span style="display:inline-block; background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:12px; padding:2px 8px; font-size:0.75rem; font-weight:600; margin-right:4px; margin-top:4px;">⚠️ {a}</span>'
+                
+                if pill_html:
+                    st.markdown(f'<div style="margin: 4px 0 6px 0; min-height: 28px;">{pill_html}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div style="margin: 4px 0 6px 0; min-height: 28px;"><span style="color:#94a3b8; font-size:0.75rem;">🌱 조화로운 식단 구성</span></div>', unsafe_allow_html=True)
 
-            st.write("")
-            is_m_eaten, m_status_text = get_meal_eaten_status(meal_entry, "morning", st.session_state.auto_deduct)
-            if is_m_eaten:
-                st.success(m_status_text)
-                if st.button("❌ 아침 안 먹음 (건너뜀/재고복구)", key="skip_m"):
-                    set_override(meal_entry, "morning", "skipped")
-            else:
-                st.info(m_status_text)
-                if st.button("🥣 지금 바로 식사 완료 처리", key="force_eat_m", type="primary", use_container_width=True):
-                    set_override(meal_entry, "morning", "eaten")
+                # 💡 [반찬 1개 더 추가 추천]
+                rec = get_best_topping_recommendation(ings, data.get("inventory", []), surplus_items)
+                if rec:
+                    surplus_tag = f"(+{rec['surplus']}개 잉여)" if rec["surplus"] > 0 else f"(재고 {rec['stock']}개)"
+                    badge_color = "#047857" if rec["type"] == "golden" else ("#0284c7" if rec["type"] == "gentle" else "#475569")
+                    
+                    st.markdown(f"""
+                    <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; padding:6px 10px; margin:4px 0 6px 0; font-size:0.79rem; line-height:1.4;">
+                        <span style="font-weight:600; color:#334155;">💡 반찬 1개 더 추천:</span>
+                        <b style="color:{badge_color};">{rec['name']}</b> <small style="color:#64748b;">{surplus_tag}</small><br>
+                        <span style="color:#475569; font-size:0.73rem;">└ {rec['desc']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            with st.popover("✏️ 아침 재료 관리/삭제"):
-                st.caption(f"🌅 {selected_date_str} 아침 재료")
-                for ing in list(meal_entry.get("morning", [])):
-                    c_txt, c_del = st.columns([3, 1])
-                    c_txt.write(f"• {ing}")
-                    if c_del.button("삭제", key=f"del_m_{selected_idx}_{ing}"):
-                        meal_entry["morning"].remove(ing)
+                    if st.button(f"➕ '{rec['name']}' 바로 추가", key=f"quick_add_{slot_key}_{selected_idx}", use_container_width=True):
+                        meal_obj[slot_key].append(rec["name"])
                         storage.save_data(data)
+                        st.toast(f"🎉 {selected_date_str} {slot_name}에 '{rec['name']}' 큐브가 추가되었습니다!")
                         st.rerun()
+                else:
+                    st.markdown('<div style="margin:4px 0 6px 0; font-size:0.75rem; color:#94a3b8;">💡 추가 권장 큐브 없음</div>', unsafe_allow_html=True)
 
-        # Lunch
-        with col_l:
-            st.markdown("### ☀️ 점심 식단")
-            ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in meal_entry.get("lunch", [])])
-            st.markdown(ing_html, unsafe_allow_html=True)
-            
-            # Nutritional combo evaluation
-            combo_l = evaluate_meal_combo(meal_entry.get("lunch", []))
-            for g in combo_l["goldens"]:
-                st.markdown(f'<div style="background-color:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#166534;">🌟 <b>황금 궁합:</b> {g}</div>', unsafe_allow_html=True)
-            for a in combo_l["alerts"]:
-                st.markdown(f'<div style="background-color:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#9a3412;">⚠️ <b>조합 주의:</b> {a}</div>', unsafe_allow_html=True)
+                st.write("")
+                is_eaten, status_text = get_meal_eaten_status(meal_obj, slot_key, st.session_state.auto_deduct)
+                if is_eaten:
+                    st.success(status_text)
+                    if st.button(f"❌ {slot_short} 안 먹음 (건너뜀)", key=f"skip_{slot_key}", use_container_width=True):
+                        set_override(meal_obj, slot_key, "skipped")
+                else:
+                    st.info(status_text)
+                    if st.button(f"🥣 {slot_short} 식사 완료 처리", key=f"force_eat_{slot_key}", type="primary", use_container_width=True):
+                        set_override(meal_obj, slot_key, "eaten")
 
-            st.write("")
-            is_l_eaten, l_status_text = get_meal_eaten_status(meal_entry, "lunch", st.session_state.auto_deduct)
-            if is_l_eaten:
-                st.success(l_status_text)
-                if st.button("❌ 점심 안 먹음 (건너뜀/재고복구)", key="skip_l"):
-                    set_override(meal_entry, "lunch", "skipped")
-            else:
-                st.info(l_status_text)
-                if st.button("🥣 지금 바로 식사 완료 처리", key="force_eat_l", type="primary", use_container_width=True):
-                    set_override(meal_entry, "lunch", "eaten")
+                with st.popover(f"✏️ {slot_short} 재료 관리/삭제", use_container_width=True):
+                    st.caption(f"{slot_name} 재료 목록")
+                    for ing in list(meal_obj.get(slot_key, [])):
+                        c_txt, c_del = st.columns([3, 1])
+                        c_txt.write(f"• {ing}")
+                        if c_del.button("삭제", key=f"del_{slot_key}_{selected_idx}_{ing}"):
+                            meal_obj[slot_key].remove(ing)
+                            storage.save_data(data)
+                            st.rerun()
 
-            with st.popover("✏️ 점심 재료 관리/삭제"):
-                st.caption(f"☀️ {selected_date_str} 점심 재료")
-                for ing in list(meal_entry.get("lunch", [])):
-                    c_txt, c_del = st.columns([3, 1])
-                    c_txt.write(f"• {ing}")
-                    if c_del.button("삭제", key=f"del_l_{selected_idx}_{ing}"):
-                        meal_entry["lunch"].remove(ing)
-                        storage.save_data(data)
-                        st.rerun()
-
-        # Dinner
-        with col_d:
-            st.markdown("### 🌙 저녁 식단")
-            ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in meal_entry.get("dinner", [])])
-            st.markdown(ing_html, unsafe_allow_html=True)
-            
-            # Nutritional combo evaluation
-            combo_d = evaluate_meal_combo(meal_entry.get("dinner", []))
-            for g in combo_d["goldens"]:
-                st.markdown(f'<div style="background-color:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#166534;">🌟 <b>황금 궁합:</b> {g}</div>', unsafe_allow_html=True)
-            for a in combo_d["alerts"]:
-                st.markdown(f'<div style="background-color:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#9a3412;">⚠️ <b>조합 주의:</b> {a}</div>', unsafe_allow_html=True)
-
-            st.write("")
-            is_d_eaten, d_status_text = get_meal_eaten_status(meal_entry, "dinner", st.session_state.auto_deduct)
-            if is_d_eaten:
-                st.success(d_status_text)
-                if st.button("❌ 저녁 안 먹음 (건너뜀/재고복구)", key="skip_d"):
-                    set_override(meal_entry, "dinner", "skipped")
-            else:
-                st.info(d_status_text)
-                if st.button("🥣 지금 바로 식사 완료 처리", key="force_eat_d", type="primary", use_container_width=True):
-                    set_override(meal_entry, "dinner", "eaten")
-
-            with st.popover("✏️ 저녁 재료 관리/삭제"):
-                st.caption(f"🌙 {selected_date_str} 저녁 재료")
-                for ing in list(meal_entry.get("dinner", [])):
-                    c_txt, c_del = st.columns([3, 1])
-                    c_txt.write(f"• {ing}")
-                    if c_del.button("삭제", key=f"del_d_{selected_idx}_{ing}"):
-                        meal_entry["dinner"].remove(ing)
-                        storage.save_data(data)
-                        st.rerun()
+        # Render Morning, Lunch, Dinner with balanced layout
+        render_meal_slot_card(col_m, "morning", "🌅 아침 식단", "아침", meal_entry)
+        render_meal_slot_card(col_l, "lunch", "☀️ 점심 식단", "점심", meal_entry)
+        render_meal_slot_card(col_d, "dinner", "🌙 저녁 식단", "저녁", meal_entry)
 
         # ==========================================
         # 💡 [냉동실 털기] 빨리 소진해야 하는 큐브 추천 & 식단에 추가
