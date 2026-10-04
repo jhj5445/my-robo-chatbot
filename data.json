@@ -34,7 +34,7 @@
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 10
+      "current_stock": 25
     },
     {
       "category": "채소류",
@@ -692,6 +692,14 @@
     }
   ],
   "production_logs": [
+    {
+      "date": "2026-10-05",
+      "ingredient": "브로콜리",
+      "category": "채소류",
+      "quantity": 10,
+      "exp_date": "2026-10-18",
+      "memo": ""
+    },
     {
       "date": "2026-10-05",
       "ingredient": "양배추",
