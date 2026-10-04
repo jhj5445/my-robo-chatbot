@@ -416,6 +416,88 @@ def get_badge_class(cat):
     if cat == "단백질": return "badge-protein"
     return "badge-veg"
 
+# ==========================================
+# 👶 이유식 재료 조합 & 영양/궁합 분석 엔진
+# ==========================================
+NITRATE_VEG = {"청경채", "배추", "시금치", "비트", "근대", "상추", "상추류"}
+CRUCIFEROUS_VEG = {"브로콜리", "양배추", "배추", "콜리플라워", "케일", "적채"}
+GENTLE_VEG = {"애호박", "감자", "당근", "양파", "단호박"}
+
+DISCOURAGED_PAIRS = [
+    ({"단호박", "무"}, "단호박 + 무 (비타민 C 산화 및 소화 흡수 비효율)"),
+    ({"오이", "당근"}, "오이 + 당근 (오이의 아스코르비나아제가 비타민C를 산화시킴)"),
+    ({"감자", "고구마"}, "감자 + 고구마 (전분질 탄수화물 과다 & 가스 부담)"),
+    ({"애호박", "단호박"}, "애호박 + 단호박 (유사 호박류 중복)"),
+    ({"시금치", "두부"}, "시금치 + 두부 (옥살산과 칼슘이 결합하여 흡수 방해)"),
+    ({"시금치", "멸치"}, "시금치 + 멸치 (옥살산-칼슘 흡수 방해)"),
+    ({"시금치", "치즈"}, "시금치 + 치즈 (옥살산-칼슘 흡수 방해)"),
+    ({"시금치", "비트"}, "시금치 + 비트 (질산염 및 옥살산 과다)"),
+    ({"근대", "두부"}, "근대 + 두부 (옥살산-칼슘 흡수 방해)"),
+    ({"브로콜리", "양배추"}, "브로콜리 + 양배추 (십자화과 중복, 가스 발생 가능)"),
+    ({"브로콜리", "배추"}, "브로콜리 + 배추 (십자화과 중복, 가스 발생 가능)"),
+    ({"양배추", "배추"}, "양배추 + 배추 (십자화과 중복, 가스 발생 가능)"),
+    ({"브로콜리", "콜리플라워"}, "브로콜리 + 콜리플라워 (십자화과 중복, 가스 발생 가능)"),
+]
+
+GOLDEN_COMBOS = [
+    ({"소고기", "브로콜리", "감자"}, "🥩 소고기 + 브로콜리 + 감자: 비타민C가 비헴철 흡수를 돕는 최고 궁합!"),
+    ({"소고기", "브로콜리", "애호박"}, "🥩 소고기 + 브로콜리 + 애호박: 철분 흡수 극대화 & 소화 편안한 골든 조합!"),
+    ({"소고기", "애호박", "당근"}, "🥩 소고기 + 애호박 + 당근: 균형 잡힌 영양 & 편안한 소화 추천!"),
+    ({"소고기", "감자", "애호박"}, "🥩 소고기 + 감자 + 애호박: 부드러운 전분질과 담백한 소화 궁합!"),
+    ({"애호박", "감자", "당근"}, "🥕 애호박 + 감자 + 당근: 실패 없는 순한 채소 삼총사 (소화 편안함 최고)!"),
+    ({"애호박", "감자", "양파"}, "🧅 애호박 + 감자 + 양파: 풍미와 부드러움을 모두 잡은 최고 채소 조합!"),
+    ({"애호박", "당근", "양파"}, "🧅 애호박 + 당근 + 양파: 달큰하고 향긋한 순한 채소 황금 조합!"),
+    ({"감자", "당근", "양파"}, "🥔 감자 + 당근 + 양파: 아기들이 가장 좋아하는 기본 영양 채소 조합!"),
+    ({"닭고기", "애호박", "당근"}, "🍗 닭고기 + 애호박 + 당근: 닭고기의 담백함과 순한 채소의 환상 궁합!"),
+    ({"닭고기", "감자", "양파"}, "🍗 닭고기 + 감자 + 양파: 닭고기와 감자양파의 부드러운 스튜형 최고 궁합!"),
+    ({"흰살생선", "감자", "애호박"}, "🐟 흰살생선 + 감자 + 애호박: 비린내 없이 담백하고 소화 잘 되는 조합!"),
+    ({"당근", "애호박", "브로콜리"}, "🥦 당근 + 애호박 + 브로콜리: 비타민과 식이섬유가 균형 잡힌 추천 채소 조합!"),
+    ({"감자", "애호박", "브로콜리"}, "🥦 감자 + 애호박 + 브로콜리: 부드러운 질감과 비타민C 충전 추천 조합!"),
+]
+
+def evaluate_meal_combo(ingredients):
+    ing_set = set(ingredients)
+    alerts = []
+    goldens = []
+    
+    cruc_in_meal = ing_set.intersection(CRUCIFEROUS_VEG)
+    if len(cruc_in_meal) >= 2:
+        names = ", ".join(cruc_in_meal)
+        alerts.append("십자화과 채소 중복 (" + names + "): 가스 유발 가능성 있어 한 끼 1종 권장")
+        
+    nitrate_in_meal = ing_set.intersection(NITRATE_VEG)
+    if len(nitrate_in_meal) >= 2:
+        names = ", ".join(nitrate_in_meal)
+        alerts.append("질산염 채소 중복 (" + names + "): 한 끼 몰아넣지 않고 끼니별 분산 권장")
+        
+    for pair, reason in DISCOURAGED_PAIRS:
+        if pair.issubset(ing_set):
+            alerts.append(reason)
+            
+    for combo, desc in GOLDEN_COMBOS:
+        if combo.issubset(ing_set):
+            goldens.append(desc)
+            
+    return {"alerts": alerts, "goldens": goldens}
+
+def simulate_topping_addition(current_ingredients, candidate):
+    new_list = list(current_ingredients) + [candidate]
+    res = evaluate_meal_combo(new_list)
+    curr_res = evaluate_meal_combo(current_ingredients)
+    
+    new_alerts = [a for a in res["alerts"] if a not in curr_res["alerts"]]
+    if new_alerts:
+        return "warning", "⚠️ [궁합 주의] " + new_alerts[0]
+        
+    new_goldens = [g for g in res["goldens"] if g not in curr_res["goldens"]]
+    if new_goldens:
+        return "golden", "🌟 [황금 궁합 달성!] " + new_goldens[0]
+        
+    if candidate in GENTLE_VEG:
+        return "good", "🌱 [순한 채소] 소화 편안한 추천 재료"
+        
+    return "neutral", "✅ 무난한 조합"
+
 # Calculate Chronological Depletion & Deadlines with Automatic Deduction
 def calculate_system_state(data, auto_mode=True):
     meals = data.get("meals", [])
@@ -592,12 +674,13 @@ if "auto_deduct" not in st.session_state:
 timeline_results, urgent_shortages, consumed_counts, surplus_items = calculate_system_state(data, auto_mode=st.session_state.auto_deduct)
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🍽️ 오늘의 식단 & 자동 차감",
     "🧊 큐브 제작 (입고)",
     "📊 냉동실 큐브 재고 (소진일)",
     "🛒 마트 장보기 (마감일 순)",
-    "📅 15일 식단표 전체보기"
+    "📅 15일 식단표 전체보기",
+    "🥗 이유식 영양 & 궁합 가이드"
 ])
 
 # ==========================================
@@ -649,6 +732,14 @@ with tab1:
             st.markdown("### 🌅 아침 식단")
             ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in meal_entry.get("morning", [])])
             st.markdown(ing_html, unsafe_allow_html=True)
+            
+            # Nutritional combo evaluation
+            combo_m = evaluate_meal_combo(meal_entry.get("morning", []))
+            for g in combo_m["goldens"]:
+                st.markdown(f'<div style="background-color:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#166534;">🌟 <b>황금 궁합:</b> {g}</div>', unsafe_allow_html=True)
+            for a in combo_m["alerts"]:
+                st.markdown(f'<div style="background-color:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#9a3412;">⚠️ <b>조합 주의:</b> {a}</div>', unsafe_allow_html=True)
+
             st.write("")
             is_m_eaten, m_status_text = get_meal_eaten_status(meal_entry, "morning", st.session_state.auto_deduct)
             if is_m_eaten:
@@ -675,6 +766,14 @@ with tab1:
             st.markdown("### ☀️ 점심 식단")
             ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in meal_entry.get("lunch", [])])
             st.markdown(ing_html, unsafe_allow_html=True)
+            
+            # Nutritional combo evaluation
+            combo_l = evaluate_meal_combo(meal_entry.get("lunch", []))
+            for g in combo_l["goldens"]:
+                st.markdown(f'<div style="background-color:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#166534;">🌟 <b>황금 궁합:</b> {g}</div>', unsafe_allow_html=True)
+            for a in combo_l["alerts"]:
+                st.markdown(f'<div style="background-color:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#9a3412;">⚠️ <b>조합 주의:</b> {a}</div>', unsafe_allow_html=True)
+
             st.write("")
             is_l_eaten, l_status_text = get_meal_eaten_status(meal_entry, "lunch", st.session_state.auto_deduct)
             if is_l_eaten:
@@ -701,6 +800,14 @@ with tab1:
             st.markdown("### 🌙 저녁 식단")
             ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in meal_entry.get("dinner", [])])
             st.markdown(ing_html, unsafe_allow_html=True)
+            
+            # Nutritional combo evaluation
+            combo_d = evaluate_meal_combo(meal_entry.get("dinner", []))
+            for g in combo_d["goldens"]:
+                st.markdown(f'<div style="background-color:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#166534;">🌟 <b>황금 궁합:</b> {g}</div>', unsafe_allow_html=True)
+            for a in combo_d["alerts"]:
+                st.markdown(f'<div style="background-color:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:6px 10px; margin-top:6px; font-size:0.8rem; color:#9a3412;">⚠️ <b>조합 주의:</b> {a}</div>', unsafe_allow_html=True)
+
             st.write("")
             is_d_eaten, d_status_text = get_meal_eaten_status(meal_entry, "dinner", st.session_state.auto_deduct)
             if is_d_eaten:
@@ -727,8 +834,8 @@ with tab1:
         # ==========================================
         st.write("")
         st.divider()
-        st.subheader("💡 [냉동실 털기] 빨리 소진해야 하는 큐브 추천 & 식단에 추가")
-        st.caption("남은 15일 식단에 계획된 수량보다 냉동실에 더 많이 남아있는 **잉여 큐브들을 추천**해 드립니다. 선택한 끼니에 추가하면 빠르게 소진할 수 있습니다!")
+        st.subheader("💡 [냉동실 털기] 잔량 잉여 큐브 소진 & 영양 궁합 스마트 추가")
+        st.caption("남은 15일 식단에 계획된 수량보다 냉동실에 더 많이 남아있는 **잉여 큐브**를 추천해 드립니다. 선택한 끼니의 기존 재료와의 **영양/가스 궁합(황금 궁합/주의)**을 실시간으로 분석해 최적의 큐브를 제안합니다!")
 
         if not surplus_items:
             st.success("🎉 현재 냉동실에 남아도는 잉여 큐브가 없습니다. 식단표와 완벽히 맞아떨어집니다!")
@@ -744,18 +851,39 @@ with tab1:
             </div>
             """, unsafe_allow_html=True)
 
-            c_add_slot, c_add_item, c_add_btn = st.columns([2, 2, 2])
+            c_add_slot, c_add_item, c_add_btn = st.columns([2, 3, 2])
+            slot_map = {"🌅 아침": "morning", "☀️ 점심": "lunch", "🌙 저녁": "dinner"}
             with c_add_slot:
                 target_slot = st.selectbox("추가할 끼니 선택", ["🌅 아침", "☀️ 점심", "🌙 저녁"], key="surplus_slot_choice")
+                target_slot_key = slot_map[target_slot]
+                target_current_ings = meal_entry.get(target_slot_key, [])
+
             with c_add_item:
-                surplus_options = [f"{s['name']} (+{s['surplus']}개 남음)" for s in surplus_items]
-                chosen_opt = st.selectbox("추가할 잉여 큐브", surplus_options, key="surplus_item_choice")
-                chosen_ing_name = chosen_opt.split(" (")[0]
+                surplus_options = []
+                opt_info_map = {}
+                for s in surplus_items:
+                    s_name = s["name"]
+                    score_type, sim_msg = simulate_topping_addition(target_current_ings, s_name)
+                    tag = "🌟최고궁합" if score_type == "golden" else ("⚠️가스/주의" if score_type == "warning" else ("🌱순한채소" if score_type == "good" else "✅무난"))
+                    opt_label = f"{s_name} (+{s['surplus']}개 남음) [{tag}]"
+                    surplus_options.append(opt_label)
+                    opt_info_map[opt_label] = (s_name, score_type, sim_msg)
+
+                chosen_opt = st.selectbox("추가할 잉여 큐브 선택", surplus_options, key="surplus_item_choice")
+                chosen_ing_name, chosen_score, chosen_msg = opt_info_map[chosen_opt]
+                
+                # Show dynamic preview message below the selectbox
+                if chosen_score == "golden":
+                    st.caption(f":green[**{chosen_msg}**]")
+                elif chosen_score == "warning":
+                    st.caption(f":red[**{chosen_msg}**]")
+                else:
+                    st.caption(f":blue[{chosen_msg}]")
+
             with c_add_btn:
                 st.write("")
                 st.write("")
                 if st.button("➕ 선택한 끼니에 큐브 추가하기", type="primary", use_container_width=True, key="btn_add_surplus"):
-                    slot_map = {"🌅 아침": "morning", "☀️ 점심": "lunch", "🌙 저녁": "dinner"}
                     slot_key = slot_map[target_slot]
                     if chosen_ing_name in meal_entry.get(slot_key, []):
                         st.warning(f"이미 {selected_date_str} {target_slot} 식단에 '{chosen_ing_name}'이(가) 포함되어 있습니다!")
@@ -764,6 +892,10 @@ with tab1:
                             meal_entry[slot_key] = []
                         meal_entry[slot_key].append(chosen_ing_name)
                         storage.save_data(data)
+                        if chosen_score == "warning":
+                            st.toast(f"⚠️ {chosen_ing_name} 큐브가 추가되었습니다. (궁합 주의: {chosen_msg})")
+                        else:
+                            st.toast(f"🎉 {chosen_ing_name} 큐브 추가 완료!")
                         st.success(f"🎉 {selected_date_str} {target_slot}에 '{chosen_ing_name}' 큐브가 추가되었습니다! 냉동실 잉여 재고가 소진됩니다.")
                         st.rerun()
 
@@ -1067,3 +1199,71 @@ with tab5:
                 st.success("✅ '이유식_식단_및_큐브관리_최신현황.xlsx' 파일로 저장 완료되었습니다!")
             except Exception as e:
                 st.error(f"엑셀 저장 오류: {e}")
+
+# ==========================================
+# TAB 6: 🥗 이유식 영양 & 궁합 코칭 가이드
+# ==========================================
+with tab6:
+    st.subheader("👶 이유식 재료 영양 & 황금 궁합 가이드")
+    st.markdown("""
+    > 💡 **참고 안내:**  
+    > 본 내용은 "절대 금지 음식"이 아니라, 아기의 **소화 편의성, 가스 유발 방지, 철분 흡수 극대화, 맛의 조화**를 고려해 더 균형 있고 편안하게 구성하기 위한 영양 관리 기준입니다.
+    """)
+
+    c_g1, c_g2 = st.columns(2)
+    with c_g1:
+        st.markdown("""
+        ### 👑 최고 궁합 라인 (골든 조합)
+        *식단 구성 시 가장 추천하는 검증된 황금 조합입니다.*
+        - 🥩 **소고기 + 브로콜리 + 감자**: 비타민C가 소고기의 철분(비헴철) 흡수를 극대화
+        - 🥩 **소고기 + 브로콜리 + 애호박**: 철분 흡수 촉진 & 소화 편안함 최고
+        - 🥩 **소고기 + 애호박 + 당근**: 균형 잡힌 영양 & 편안한 소화
+        - 🥩 **소고기 + 감자 + 애호박**: 부드러운 전분질과 담백한 소화
+        - 🍗 **닭고기 + 애호박 + 당근**: 닭고기의 담백함과 순한 채소의 환상 궁합
+        - 🍗 **닭고기 + 감자 + 양파**: 부드러운 스튜형 최고 궁합
+        - 🐟 **흰살생선 + 감자 + 애호박**: 비린내 없이 담백하고 소화 잘 되는 조합
+        - 🥕 **애호박 + 감자 + 당근**: 실패 없는 순한 채소 삼총사
+        - 🧅 **애호박 + 감자 + 양파**: 풍미와 부드러움을 모두 잡은 채소 조합
+        - 🧅 **애호박 + 당근 + 양파**: 달큰하고 향긋한 순한 채소 황금 조합
+        - 🥔 **감자 + 당근 + 양파**: 아기들이 가장 좋아하는 기본 영양 채소 조합
+        - 🥦 **당근 + 애호박 + 브로콜리**: 비타민과 식이섬유가 균형 잡힌 채소 조합
+        - 🥦 **감자 + 애호박 + 브로콜리**: 부드러운 질감과 비타민C 충전 조합
+        """)
+
+        st.markdown("""
+        ### 🌱 순한 채소 라인
+        *소화가 잘 되고 자극이 적어 어느 식단에나 곁들이기 좋은 채소:*
+        - **애호박, 감자, 당근, 양파 (소량), 단호박 (소량)**
+        """)
+
+    with c_g2:
+        st.markdown("""
+        ### ⚠️ 주의 & 비추천 조합 라인
+        *영양소 파괴, 흡수 방해, 가스 유발 가능성이 있어 피하는 것이 좋은 조합:*
+        
+        **1. 🥦 십자화과 채소 라인 (가스 가능성 있어 한 끼 1종만 권장)**
+        - 재료: **브로콜리, 양배추, 배추, 콜리플라워, 케일, 적채**
+        - 🚫 피할 조합: 브로콜리+양배추 / 브로콜리+배추 / 양배추+배추 / 브로콜리+콜리플라워
+        
+        **2. 🌿 질산염 채소 라인 (한 끼 몰아넣지 않기 / 조리 후 바로 냉동)**
+        - 재료: **청경채, 배추, 시금치, 비트, 근대, 상추류**
+        - 원칙: 한 끼에 2종 이상 겹치지 않게 분산 급여
+        
+        **3. 🚫 굳이 안 섞는 비추천 채소 조합**
+        - **단호박 + 무**: 비타민C 분해 효소로 인한 영양 파괴
+        - **오이 + 당근**: 오이의 아스코르비나아제가 당근 비타민C 산화
+        - **감자 + 고구마**: 전분질/탄수화물 과다로 소화 및 배에 가스 유발
+        - **애호박 + 단호박**: 유사 호박류 중복
+        - **시금치 + 두부/멸치/치즈**: 옥살산과 칼슘이 결합하여 흡수 방해
+        - **근대 + 두부**: 옥살산-칼슘 흡수 방해
+        """)
+
+        st.markdown("""
+        ### 💊 주요 영양소별 채소 정리
+        - **베타카로틴 (면역/눈):** 당근, 단호박, 브로콜리
+        - **비타민 C (철분 흡수 촉진):** 브로콜리, 감자, 양배추, 배추
+        - **엽산 (성장/발달):** 브로콜리, 시금치, 케일
+        - **칼륨 (나트륨 배출):** 감자, 단호박, 아보카도
+        """)
+
+    st.info("📌 **안내**: 아기의 알레르기 유무, 소화 및 배변 상태에 따라 반응은 달라질 수 있습니다. 특이 반응이 있는 경우 반드시 소아청소년과 전문의와 상담하세요.")
