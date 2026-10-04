@@ -193,16 +193,22 @@ with st.sidebar:
 
     if storage.apps_script_url:
         st.success("🟢 **Google Sheets 실시간 연동 중!**\n\n모든 큐브 변경/소진 내역이 내 구글 스프레드시트에 영구 저장됩니다.")
-        c_ref, c_disc = st.columns(2)
+        c_save, c_ref = st.columns(2)
+        with c_save:
+            if st.button("☁️ 시트에 저장", type="primary", use_container_width=True, key="side_save_btn"):
+                with st.spinner("구글 시트에 저장 중..."):
+                    storage.save_data(data)
+                st.toast("✅ 구글 시트에 성공적으로 저장되었습니다!")
+                st.success(f"✅ 저장 완료! ({get_now().strftime('%H:%M:%S')})")
         with c_ref:
-            if st.button("🔄 시트 불러오기"):
+            if st.button("🔄 시트 불러오기", use_container_width=True, key="side_reload_btn"):
                 st.rerun()
-        with c_disc:
-            if st.button("🔌 연동 해제"):
-                cfg["apps_script_url"] = ""
-                save_config(cfg)
-                storage.apps_script_url = ""
-                st.rerun()
+        
+        if st.button("🔌 연동 해제 (로컬 모드 전환)", key="side_disc_btn"):
+            cfg["apps_script_url"] = ""
+            save_config(cfg)
+            storage.apps_script_url = ""
+            st.rerun()
     else:
         st.info("🟡 **로컬 저장 모드**\n\n현재 로컬 파일에 저장 중입니다. 아래에서 구글 시트 웹앱 URL을 입력하면 영구 클라우드 저장이 시작됩니다.")
 
@@ -890,38 +896,49 @@ with tab5:
     st.dataframe(table_rows, use_container_width=True, hide_index=True)
 
     st.divider()
-    if st.button("📥 현재 상태 엑셀(XLSX)로 내보내기/저장"):
-        try:
-            import openpyxl
-            wb = openpyxl.Workbook()
-            ws1 = wb.active
-            ws1.title = "현재재고_및_소진일"
-            ws1.append(["분류", "품목", "현재실재고", "남은필요량", "예상잔여", "예상소진시점"])
-            for item in data.get("inventory", []):
-                n = item["name"]
-                t_info = timeline_results.get(n, {})
-                s = t_info.get("stock", 0)
-                nd = t_info.get("future_need", 0)
-                dep = t_info.get("depletion_desc", "-")
-                ws1.append([item["category"], n, s, nd, s - nd, dep])
-            
-            ws2 = wb.create_sheet(title="식단표")
-            ws2.append(["날짜", "요일", "아침", "점심", "저녁", "아침완료", "점심완료", "저녁완료", "비고"])
-            for m in data.get("meals", []):
-                m_eaten, _ = get_meal_eaten_status(m, "morning", st.session_state.auto_deduct)
-                l_eaten, _ = get_meal_eaten_status(m, "lunch", st.session_state.auto_deduct)
-                d_eaten, _ = get_meal_eaten_status(m, "dinner", st.session_state.auto_deduct)
-                ws2.append([
-                    m["date"], m["day_of_week"],
-                    "\n".join(m.get("morning", [])),
-                    "\n".join(m.get("lunch", [])),
-                    "\n".join(m.get("dinner", [])),
-                    "완료" if m_eaten else "미완료",
-                    "완료" if l_eaten else "미완료",
-                    "완료" if d_eaten else "미완료",
-                    m.get("note", "")
-                ])
-            wb.save("이유식_식단_및_큐브관리_최신현황.xlsx")
-            st.success("✅ '이유식_식단_및_큐브관리_최신현황.xlsx' 파일로 저장 완료되었습니다!")
-        except Exception as e:
-            st.error(f"엑셀 저장 오류: {e}")
+    st.subheader("💾 데이터 내보내기 & 영구 저장")
+    c_save_sheet, c_save_excel = st.columns(2)
+
+    with c_save_sheet:
+        if st.button("☁️ 현재 상태 구글 시트에 즉시 저장하기", type="primary", use_container_width=True, key="tab5_gsheet_save"):
+            with st.spinner("구글 스프레드시트에 저장 중..."):
+                storage.save_data(data)
+            st.toast("✅ 구글 시트에 성공적으로 저장되었습니다!")
+            st.success(f"✅ 구글 스프레드시트 동기화 완료! ({get_now().strftime('%Y-%m-%d %H:%M:%S')})")
+
+    with c_save_excel:
+        if st.button("📥 엑셀(XLSX) 파일로 다운로드/저장", use_container_width=True, key="tab5_excel_save"):
+            try:
+                import openpyxl
+                wb = openpyxl.Workbook()
+                ws1 = wb.active
+                ws1.title = "현재재고_및_소진일"
+                ws1.append(["분류", "품목", "현재실재고", "남은필요량", "예상잔여", "예상소진시점"])
+                for item in data.get("inventory", []):
+                    n = item["name"]
+                    t_info = timeline_results.get(n, {})
+                    s = t_info.get("stock", 0)
+                    nd = t_info.get("future_need", 0)
+                    dep = t_info.get("depletion_desc", "-")
+                    ws1.append([item["category"], n, s, nd, s - nd, dep])
+                
+                ws2 = wb.create_sheet(title="식단표")
+                ws2.append(["날짜", "요일", "아침", "점심", "저녁", "아침완료", "점심완료", "저녁완료", "비고"])
+                for m in data.get("meals", []):
+                    m_eaten, _ = get_meal_eaten_status(m, "morning", st.session_state.auto_deduct)
+                    l_eaten, _ = get_meal_eaten_status(m, "lunch", st.session_state.auto_deduct)
+                    d_eaten, _ = get_meal_eaten_status(m, "dinner", st.session_state.auto_deduct)
+                    ws2.append([
+                        m["date"], m["day_of_week"],
+                        "\n".join(m.get("morning", [])),
+                        "\n".join(m.get("lunch", [])),
+                        "\n".join(m.get("dinner", [])),
+                        "완료" if m_eaten else "미완료",
+                        "완료" if l_eaten else "미완료",
+                        "완료" if d_eaten else "미완료",
+                        m.get("note", "")
+                    ])
+                wb.save("이유식_식단_및_큐브관리_최신현황.xlsx")
+                st.success("✅ '이유식_식단_및_큐브관리_최신현황.xlsx' 파일로 저장 완료되었습니다!")
+            except Exception as e:
+                st.error(f"엑셀 저장 오류: {e}")
