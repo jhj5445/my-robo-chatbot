@@ -1206,10 +1206,115 @@ with tab5:
     meals_list = data.get("meals", [])
     st.subheader(f"📅 이유식 식단표 (총 {len(meals_list)}일차)")
     
-    # ➕ 1. 새로운 날짜 식단 추가
-    with st.expander("➕ 새로운 날짜 식단 추가하기 (16일차 이후 또는 특정 날짜 등록)", expanded=False):
+    # 📋 1. 특정 날짜 식단 그대로 복제하기
+    with st.expander("📋 특정 날짜 식단 그대로 복제하기 (1일 또는 2~3일 연속 복제)", expanded=False):
+        st.markdown("이미 작성된 날짜의 식단(아침·점심·저녁 큐브 및 메모)을 다른 날짜에 **그대로 복사**하여 등록합니다.")
+        if not meals_list:
+            st.warning("복사할 기존 식단이 없습니다.")
+        else:
+            c_src, c_tgt = st.columns(2)
+            with c_src:
+                copy_src_options = [f"{idx+1}일차: {m['date']} ({m['day_of_week']})" for idx, m in enumerate(meals_list)]
+                default_src_idx = len(copy_src_options) - 1
+                sel_src_label = st.selectbox("1️⃣ 복사할 원본 날짜 선택", copy_src_options, index=default_src_idx, key="copy_src_date_sel")
+                src_idx = copy_src_options.index(sel_src_label)
+                src_meal = meals_list[src_idx]
+                
+                m_str = ', '.join(src_meal.get('morning', [])) or '(없음)'
+                l_str = ', '.join(src_meal.get('lunch', [])) or '(없음)'
+                d_str = ', '.join(src_meal.get('dinner', [])) or '(없음)'
+                nt_str = src_meal.get('note', '-')
+                st.markdown(f"""
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:0.83rem; line-height:1.45; margin-top:5px;">
+                    <b>🌅 아침:</b> {m_str}<br>
+                    <b>☀️ 점심:</b> {l_str}<br>
+                    <b>🌙 저녁:</b> {d_str}<br>
+                    <small style="color:#64748b;">💡 메모: {nt_str}</small>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with c_tgt:
+                default_copy_target = now.date()
+                last_d = parse_meal_date(meals_list[-1]["date"])
+                if last_d:
+                    default_copy_target = last_d + timedelta(days=1)
+                
+                copy_start_date = st.date_input("2️⃣ 적용할 새 시작 날짜", value=default_copy_target, key="copy_target_date_input")
+                repeat_days = st.radio("3️⃣ 적용 일수 (이유식 큐브 주기)", [1, 2, 3], index=0, horizontal=True,
+                                       format_func=lambda x: f"{x}일간 동일 적용 (큐브 묶음)" if x > 1 else "1일만 복사", key="copy_repeat_days")
+                
+                date_preview_list = []
+                for off in range(repeat_days):
+                    dt = copy_start_date + timedelta(days=off)
+                    dow = ["월", "화", "수", "목", "금", "토", "일"][dt.weekday()]
+                    date_preview_list.append(f"{dt.month}월 {dt.day}일 ({dow})")
+                
+                st.caption(f"🗓️ 복사 적용 예정: **{', '.join(date_preview_list)}**")
+
+            st.write("")
+            if st.button(f"📋 {src_meal['date']} 식단을 {repeat_days}일간 복제 등록하기", type="primary", use_container_width=True, key="btn_execute_copy_meal"):
+                KOREAN_DAYS = ["월", "화", "수", "목", "금", "토", "일"]
+                for off in range(repeat_days):
+                    dt = copy_start_date + timedelta(days=off)
+                    t_str = f"{dt.month}월 {dt.day}일"
+                    t_dow = KOREAN_DAYS[dt.weekday()]
+                    
+                    exist_i = None
+                    for idx, m in enumerate(data.get("meals", [])):
+                        if m["date"].replace(" ", "") == t_str.replace(" ", ""):
+                            exist_i = idx
+                            break
+                    
+                    new_m = {
+                        "date": t_str,
+                        "day_of_week": t_dow,
+                        "morning": list(src_meal.get("morning", [])),
+                        "lunch": list(src_meal.get("lunch", [])),
+                        "dinner": list(src_meal.get("dinner", [])),
+                        "morning_eaten": False,
+                        "lunch_eaten": False,
+                        "dinner_eaten": False,
+                        "note": src_meal.get("note", "")
+                    }
+                    if "meals" not in data:
+                        data["meals"] = []
+                    
+                    if exist_i is not None:
+                        data["meals"][exist_i] = new_m
+                    else:
+                        data["meals"].append(new_m)
+
+                def sort_meal_key(m):
+                    d = parse_meal_date(m.get("date", ""))
+                    return d if d else date(9999, 12, 31)
+                data["meals"].sort(key=sort_meal_key)
+                
+                storage.save_data(data)
+                st.toast(f"🎉 {src_meal['date']} 식단이 {repeat_days}일간 성공적으로 복제되었습니다!")
+                st.rerun()
+
+    # ➕ 2. 새로운 날짜 식단 직접 구성하기
+    with st.expander("➕ 새로운 날짜 식단 직접 구성하기 (재료 맞춤 등록)", expanded=False):
         st.markdown("새로운 날짜의 식단을 등록하면, **냉동실 큐브 소진 시점과 장보기 일정**이 즉시 자동으로 계산됩니다.")
         
+        # Helper: Load from template
+        c_tmpl, c_tmpl_btn = st.columns([3, 1])
+        with c_tmpl:
+            tmpl_options = ["(새로 직접 선택)"] + [f"{idx+1}일차: {m['date']} ({m['day_of_week']})" for idx, m in enumerate(meals_list)]
+            sel_tmpl = st.selectbox("📋 기존 날짜 식단 불러와서 채우기 (선택)", tmpl_options, key="sel_tmpl_box")
+        with c_tmpl_btn:
+            st.write("")
+            if st.button("📥 불러오기", key="btn_apply_tmpl", use_container_width=True):
+                if sel_tmpl != "(새로 직접 선택)":
+                    t_idx = tmpl_options.index(sel_tmpl) - 1
+                    chosen_m = meals_list[t_idx]
+                    st.session_state["new_m_ings_sel"] = [x for x in chosen_m.get("morning", []) if x in inv_names]
+                    st.session_state["new_l_ings_sel"] = [x for x in chosen_m.get("lunch", []) if x in inv_names]
+                    st.session_state["new_d_ings_sel"] = [x for x in chosen_m.get("dinner", []) if x in inv_names]
+                    st.session_state["new_meal_note_input"] = chosen_m.get("note", "")
+                    st.toast(f"✅ {chosen_m['date']} 식단을 불러왔습니다! 필요 시 수정 후 저장하세요.")
+                    st.rerun()
+
         # Calculate default date (next day after the last registered meal)
         default_new_date = now.date()
         if meals_list:
@@ -1224,15 +1329,23 @@ with tab5:
             new_date_str = f"{new_date_val.month}월 {new_date_val.day}일"
             st.caption(f"등록 날짜: **{new_date_str} ({k_dow})**")
         with c_nt:
+            if "new_meal_note_input" not in st.session_state:
+                st.session_state["new_meal_note_input"] = ""
             new_note = st.text_input("특이사항 / 메모 (선택)", placeholder="예: 소고기 증량 시작, 첫 생선 테스트 등", key="new_meal_note_input")
 
         st.caption("🥣 끼니별 큐브 재료를 선택하세요 (선택 시 황금 궁합/주의 알림이 즉시 표시됩니다)")
         
+        if "new_m_ings_sel" not in st.session_state:
+            st.session_state["new_m_ings_sel"] = [x for x in ["쌀죽", "소고기"] if x in inv_names]
+        if "new_l_ings_sel" not in st.session_state:
+            st.session_state["new_l_ings_sel"] = [x for x in ["쌀죽", "닭고기"] if x in inv_names]
+        if "new_d_ings_sel" not in st.session_state:
+            st.session_state["new_d_ings_sel"] = [x for x in ["쌀죽"] if x in inv_names]
+
         c_m, c_l, c_d = st.columns(3)
         with c_m:
             st.markdown("##### 🌅 아침")
-            def_m = [x for x in ["쌀죽", "소고기"] if x in inv_names]
-            new_m_ings = st.multiselect("아침 재료", inv_names, default=def_m, key="new_m_ings_sel", label_visibility="collapsed")
+            new_m_ings = st.multiselect("아침 재료", inv_names, key="new_m_ings_sel", label_visibility="collapsed")
             m_comb = evaluate_meal_combo(new_m_ings)
             for g in m_comb["goldens"]:
                 st.caption(f"✨ {g.split(':')[0]}")
@@ -1241,8 +1354,7 @@ with tab5:
 
         with c_l:
             st.markdown("##### ☀️ 점심")
-            def_l = [x for x in ["쌀죽", "닭고기"] if x in inv_names]
-            new_l_ings = st.multiselect("점심 재료", inv_names, default=def_l, key="new_l_ings_sel", label_visibility="collapsed")
+            new_l_ings = st.multiselect("점심 재료", inv_names, key="new_l_ings_sel", label_visibility="collapsed")
             l_comb = evaluate_meal_combo(new_l_ings)
             for g in l_comb["goldens"]:
                 st.caption(f"✨ {g.split(':')[0]}")
@@ -1251,8 +1363,7 @@ with tab5:
 
         with c_d:
             st.markdown("##### 🌙 저녁")
-            def_d = [x for x in ["쌀죽"] if x in inv_names]
-            new_d_ings = st.multiselect("저녁 재료", inv_names, default=def_d, key="new_d_ings_sel", label_visibility="collapsed")
+            new_d_ings = st.multiselect("저녁 재료", inv_names, key="new_d_ings_sel", label_visibility="collapsed")
             d_comb = evaluate_meal_combo(new_d_ings)
             for g in d_comb["goldens"]:
                 st.caption(f"✨ {g.split(':')[0]}")
