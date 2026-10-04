@@ -92,58 +92,56 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# Google Sheets & Local Hybrid Storage Manager
 # ==========================================
+# Google Sheets (Apps Script Web App) & Local Hybrid Storage Manager
+# ==========================================
+CONFIG_FILE = "config.json"
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_config(cfg):
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+
 class StorageManager:
     def __init__(self):
-        self.is_gsheet = False
-        self.client = None
-        self.spreadsheet = None
-        self.error = None
-        self._init_gsheet()
+        self.apps_script_url = None
+        self.is_connected = False
+        self._init_backend()
 
-    def _init_gsheet(self):
-        try:
-            if "gcp_service_account" in st.secrets:
-                import gspread
-                from google.oauth2.service_account import Credentials
-                creds_dict = dict(st.secrets["gcp_service_account"])
-                scopes = [
-                    "https://www.googleapis.com/auth/spreadsheets",
-                    "https://www.googleapis.com/auth/drive"
-                ]
-                credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-                self.client = gspread.authorize(credentials)
-                
-                sheet_target = st.secrets.get("spreadsheet_name", "우리_아기_이유식_플래너")
-                if sheet_target.startswith("https://"):
-                    self.spreadsheet = self.client.open_by_url(sheet_target)
-                else:
-                    try:
-                        self.spreadsheet = self.client.open(sheet_target)
-                    except Exception:
-                        self.spreadsheet = self.client.create(sheet_target)
-                self.is_gsheet = True
-        except Exception as e:
-            self.error = str(e)
-            self.is_gsheet = False
+    def _init_backend(self):
+        cfg = load_config()
+        url = cfg.get("apps_script_url", "")
+        if not url and "apps_script_url" in st.secrets:
+            url = st.secrets["apps_script_url"]
+        if url:
+            self.apps_script_url = url.strip()
+            self.is_connected = True
 
     def load_data(self):
-        if self.is_gsheet and self.spreadsheet:
+        # 1. Try Apps Script Web App
+        if self.apps_script_url:
             try:
-                # Try reading from '_db_state' worksheet
-                try:
-                    ws = self.spreadsheet.worksheet("_db_state")
-                    raw = ws.acell("A1").value
-                    if raw:
-                        return json.loads(raw)
-                except Exception:
-                    # If worksheet doesn't exist yet, we will create it on save
-                    pass
+                import requests
+                res = requests.get(self.apps_script_url, timeout=5)
+                if res.status_code == 200 and res.text.strip():
+                    raw = res.json()
+                    if isinstance(raw, dict) and "meals" in raw and "inventory" in raw:
+                        # Cache to local file
+                        with open(DATA_FILE, "w", encoding="utf-8") as f:
+                            json.dump(raw, f, ensure_ascii=False, indent=2)
+                        return raw
             except Exception as e:
-                st.sidebar.warning(f"구글 시트 읽기 오류 (로컬 백업 사용): {e}")
+                st.sidebar.warning(f"구글 시트 읽기 실패 (로컬 백업 사용): {e}")
 
-        # Local fallback
+        # 2. Local fallback
         if not os.path.exists(DATA_FILE):
             return {"inventory": [], "meals": [], "planner": [], "production_logs": []}
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -154,36 +152,16 @@ class StorageManager:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        # If Google Sheets connected, sync to Google Sheets
-        if self.is_gsheet and self.spreadsheet:
+        # Sync to Google Apps Script Web App
+        if self.apps_script_url:
             try:
-                # 1. Save raw state
-                try:
-                    ws_state = self.spreadsheet.worksheet("_db_state")
-                except Exception:
-                    ws_state = self.spreadsheet.add_worksheet(title="_db_state", rows=10, cols=2)
-                ws_state.update(range_name="A1", values=[[json.dumps(data, ensure_ascii=False)]])
-
-                # 2. Save human-readable '현재재고' sheet for mobile viewing
-                try:
-                    try:
-                        ws_inv = self.spreadsheet.worksheet("냉동실재고")
-                    except Exception:
-                        ws_inv = self.spreadsheet.add_worksheet(title="냉동실재고", rows=50, cols=5)
-                    ws_inv.clear()
-                    inv_rows = [["카테고리", "품목", "현재실재고", "수동조정", "업데이트일시"]]
-                    now_str = get_now().strftime("%Y-%m-%d %H:%M:%S")
-                    for item in data.get("inventory", []):
-                        inv_rows.append([
-                            item.get("category", ""),
-                            item.get("name", ""),
-                            item.get("current_stock", 0),
-                            item.get("manual_adjustment", 0),
-                            now_str
-                        ])
-                    ws_inv.update(range_name="A1", values=inv_rows)
-                except Exception:
-                    pass
+                import requests
+                requests.post(
+                    self.apps_script_url,
+                    data=json.dumps(data, ensure_ascii=False).encode('utf-8'),
+                    headers={"Content-Type": "application/json"},
+                    timeout=5
+                )
             except Exception as e:
                 st.sidebar.error(f"구글 시트 동기화 실패: {e}")
 
@@ -203,22 +181,63 @@ def get_local_ip():
     except Exception:
         return "172.30.1.50"
 
-# Sidebar: Cloud Sync Status & Setup Guide
+# Sidebar: Easy Google Sheets Setup & Status
 with st.sidebar:
-    st.header("☁️ 클라우드 동기화 상태")
-    if storage.is_gsheet:
-        st.success(f"🟢 **Google Sheets 연동 중**\n\n시트명: `{storage.spreadsheet.title}`\n\n모든 변경사항이 구글 시트에 영구 저장됩니다.")
-        if st.button("🔄 구글 시트에서 최신 데이터 다시 불러오기"):
-            st.rerun()
+    st.header("☁️ 구글 시트 간편 연동 (대안 2)")
+    cfg = load_config()
+    cur_url = cfg.get("apps_script_url", "")
+
+    if storage.apps_script_url:
+        st.success("🟢 **Google Sheets 실시간 연동 중!**\n\n모든 큐브 변경/소진 내역이 내 구글 스프레드시트에 영구 저장됩니다.")
+        c_ref, c_disc = st.columns(2)
+        with c_ref:
+            if st.button("🔄 시트 불러오기"):
+                st.rerun()
+        with c_disc:
+            if st.button("🔌 연동 해제"):
+                cfg["apps_script_url"] = ""
+                save_config(cfg)
+                storage.apps_script_url = ""
+                st.rerun()
     else:
-        st.info("🟡 **로컬 저장 모드 작동 중**\n\n현재 로컬 `data.json`에 저장되고 있습니다.")
-        with st.expander("📖 Streamlit Cloud & 구글 시트 연동 방법"):
-            st.markdown("""
-            **3단계로 3분 만에 연동하기:**
-            1. [Google Cloud Console](https://console.cloud.google.com/)에서 **서비스 계정(Service Account)** 생성 후 키 JSON 다운로드
-            2. 내 구글 드라이브에 **'우리_아기_이유식_플래너'** 스프레드시트 생성 후, 서비스 계정 이메일을 **편집자**로 공유
-            3. [Streamlit Cloud](https://share.streamlit.io/) 앱 설정 ➔ **Secrets**에 `secrets_template.toml` 내용을 복사해 넣기!
-            """)
+        st.info("🟡 **로컬 저장 모드**\n\n현재 로컬 파일에 저장 중입니다. 아래에서 구글 시트 웹앱 URL을 입력하면 영구 클라우드 저장이 시작됩니다.")
+
+    with st.expander("⚡ 1분 만에 구글 시트 연동하기 (클릭)", expanded=not bool(cur_url)):
+        st.markdown("""
+        **순서대로 따라해 보세요:**
+        1. [sheets.new](https://sheets.new) 접속 (새 시트 생성)
+        2. 메뉴: **확장 프로그램** ➔ **Apps Script**
+        3. 아래 코드 복사해 붙여넣고 **저장(Ctrl+S)**:
+        ```javascript
+        function doGet(e) {
+          var ss = SpreadsheetApp.getActiveSpreadsheet();
+          var sheet = ss.getSheetByName("db_state") || ss.getActiveSheet();
+          var val = sheet.getRange("A1").getValue();
+          return ContentService.createTextOutput(val || "{}").setMimeType(ContentService.MimeType.JSON);
+        }
+        function doPost(e) {
+          var ss = SpreadsheetApp.getActiveSpreadsheet();
+          var sheet = ss.getSheetByName("db_state") || ss.insertSheet("db_state");
+          sheet.getRange("A1").setValue(e.postData.contents);
+          return ContentService.createTextOutput(JSON.stringify({status: "ok"})).setMimeType(ContentService.MimeType.JSON);
+        }
+        ```
+        4. 우측 상단 **[배포] ➔ [새 배포]**:
+           * 유형: **웹 앱**
+           * 액세스 권한: **모든 사용자(Anyone)** ⚠️
+        5. 배포 후 나오는 **웹 앱 URL**을 아래에 붙여넣기!
+        """)
+        new_url = st.text_input("구글 웹앱 URL 붙여넣기", value=cur_url, placeholder="https://script.google.com/macros/s/.../exec")
+        if st.button("🔗 연동 저장 & 즉시 동기화", type="primary"):
+            if new_url.strip():
+                cfg["apps_script_url"] = new_url.strip()
+                save_config(cfg)
+                storage.apps_script_url = new_url.strip()
+                storage.save_data(data)
+                st.success("🎉 구글 시트와 성공적으로 연결되었습니다!")
+                st.rerun()
+            else:
+                st.warning("URL을 입력해주세요.")
 
     st.divider()
     st.caption(f"🕒 현재 기준 시각: **{now.strftime('%Y-%m-%d %H:%M')} (KST)**")
