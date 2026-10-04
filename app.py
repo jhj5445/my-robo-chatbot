@@ -3,7 +3,7 @@ import json
 import os
 import socket
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 
 # 1. KST (한국 표준시 UTC+9) 강제 적용 (Streamlit Cloud 해외 서버 대비)
 KST = timezone(timedelta(hours=9))
@@ -655,7 +655,7 @@ def calculate_system_state(data, auto_mode=True):
             depletion_desc = f"📅 {depletion_slot['label']} 식사 시 마지막 큐브 소진"
         else:
             if calc_stock >= future_need and future_need > 0:
-                depletion_desc = f"✅ 15일 계획 내 소진 안 됨 (잔여 {calc_stock - future_need}개 여유)"
+                depletion_desc = f"✅ 현재 계획({len(meals)}일) 내 소진 안 됨 (잔여 {calc_stock - future_need}개 여유)"
             elif future_need == 0:
                 depletion_desc = f"✅ 남은 식단에 사용 없음 (보유 {calc_stock}개)"
             else:
@@ -754,6 +754,7 @@ if "auto_deduct" not in st.session_state:
     st.session_state.auto_deduct = True
 
 timeline_results, urgent_shortages, consumed_counts, surplus_items = calculate_system_state(data, auto_mode=st.session_state.auto_deduct)
+inv_names = sorted([item["name"] for item in data.get("inventory", [])])
 
 # Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -875,13 +876,30 @@ with tab1:
             with c_pop:
                 with st.popover("✏️ 재료 관리", use_container_width=True):
                     st.caption(f"{slot_name} 재료 목록")
-                    for ing in list(meal_obj.get(slot_key, [])):
+                    current_ings = list(meal_obj.get(slot_key, []))
+                    for ing in current_ings:
                         c_txt, c_del = st.columns([3, 1])
                         c_txt.write(f"• {ing}")
                         if c_del.button("삭제", key=f"del_{slot_key}_{selected_idx}_{ing}"):
                             meal_obj[slot_key].remove(ing)
                             storage.save_data(data)
                             st.rerun()
+
+                    st.divider()
+                    st.caption("➕ 재료 직접 추가")
+                    available_to_add = [n for n in inv_names if n not in current_ings]
+                    if available_to_add:
+                        c_sel, c_add = st.columns([2, 1])
+                        with c_sel:
+                            add_ing = st.selectbox("재료 선택", available_to_add, key=f"sel_add_{slot_key}_{selected_idx}", label_visibility="collapsed")
+                        with c_add:
+                            if st.button("추가", key=f"btn_manual_add_{slot_key}_{selected_idx}", use_container_width=True):
+                                if slot_key not in meal_obj:
+                                    meal_obj[slot_key] = []
+                                meal_obj[slot_key].append(add_ing)
+                                storage.save_data(data)
+                                st.toast(f"✅ {slot_name}에 '{add_ing}' 추가 완료!")
+                                st.rerun()
 
         # Render Meals based on View Mode
         if show_all_three:
@@ -1182,11 +1200,143 @@ with tab4:
             st.write(f"- **장보기 추천 재료**: `{p['shopping']}`")
 
 # ==========================================
-# TAB 5: 15일 식단표 전체보기
+# TAB 5: 이유식 식단표 전체보기 & 식단 관리
 # ==========================================
 with tab5:
-    st.subheader("📅 전체 15일 이유식 식단표")
+    meals_list = data.get("meals", [])
+    st.subheader(f"📅 이유식 식단표 (총 {len(meals_list)}일차)")
     
+    # ➕ 1. 새로운 날짜 식단 추가
+    with st.expander("➕ 새로운 날짜 식단 추가하기 (16일차 이후 또는 특정 날짜 등록)", expanded=False):
+        st.markdown("새로운 날짜의 식단을 등록하면, **냉동실 큐브 소진 시점과 장보기 일정**이 즉시 자동으로 계산됩니다.")
+        
+        # Calculate default date (next day after the last registered meal)
+        default_new_date = now.date()
+        if meals_list:
+            last_d = parse_meal_date(meals_list[-1]["date"])
+            if last_d:
+                default_new_date = last_d + timedelta(days=1)
+
+        c_dt, c_nt = st.columns([1, 2])
+        with c_dt:
+            new_date_val = st.date_input("식단 날짜 선택", value=default_new_date, key="new_meal_date_input")
+            k_dow = ["월", "화", "수", "목", "금", "토", "일"][new_date_val.weekday()]
+            new_date_str = f"{new_date_val.month}월 {new_date_val.day}일"
+            st.caption(f"등록 날짜: **{new_date_str} ({k_dow})**")
+        with c_nt:
+            new_note = st.text_input("특이사항 / 메모 (선택)", placeholder="예: 소고기 증량 시작, 첫 생선 테스트 등", key="new_meal_note_input")
+
+        st.caption("🥣 끼니별 큐브 재료를 선택하세요 (선택 시 황금 궁합/주의 알림이 즉시 표시됩니다)")
+        
+        c_m, c_l, c_d = st.columns(3)
+        with c_m:
+            st.markdown("##### 🌅 아침")
+            def_m = [x for x in ["쌀죽", "소고기"] if x in inv_names]
+            new_m_ings = st.multiselect("아침 재료", inv_names, default=def_m, key="new_m_ings_sel", label_visibility="collapsed")
+            m_comb = evaluate_meal_combo(new_m_ings)
+            for g in m_comb["goldens"]:
+                st.caption(f"✨ {g.split(':')[0]}")
+            for a in m_comb["alerts"]:
+                st.caption(f"⚠️ {a}")
+
+        with c_l:
+            st.markdown("##### ☀️ 점심")
+            def_l = [x for x in ["쌀죽", "닭고기"] if x in inv_names]
+            new_l_ings = st.multiselect("점심 재료", inv_names, default=def_l, key="new_l_ings_sel", label_visibility="collapsed")
+            l_comb = evaluate_meal_combo(new_l_ings)
+            for g in l_comb["goldens"]:
+                st.caption(f"✨ {g.split(':')[0]}")
+            for a in l_comb["alerts"]:
+                st.caption(f"⚠️ {a}")
+
+        with c_d:
+            st.markdown("##### 🌙 저녁")
+            def_d = [x for x in ["쌀죽"] if x in inv_names]
+            new_d_ings = st.multiselect("저녁 재료", inv_names, default=def_d, key="new_d_ings_sel", label_visibility="collapsed")
+            d_comb = evaluate_meal_combo(new_d_ings)
+            for g in d_comb["goldens"]:
+                st.caption(f"✨ {g.split(':')[0]}")
+            for a in d_comb["alerts"]:
+                st.caption(f"⚠️ {a}")
+
+        st.write("")
+        if st.button("➕ 이 날짜 식단을 식단표에 추가 및 저장", type="primary", use_container_width=True, key="btn_save_new_meal"):
+            if not (new_m_ings or new_l_ings or new_d_ings):
+                st.warning("최소 한 끼 이상의 재료를 선택해주세요.")
+            else:
+                existing_idx = None
+                for idx, m in enumerate(data.get("meals", [])):
+                    if m["date"].replace(" ", "") == new_date_str.replace(" ", ""):
+                        existing_idx = idx
+                        break
+
+                new_entry = {
+                    "date": new_date_str,
+                    "day_of_week": k_dow,
+                    "morning": new_m_ings,
+                    "lunch": new_l_ings,
+                    "dinner": new_d_ings,
+                    "morning_eaten": False,
+                    "lunch_eaten": False,
+                    "dinner_eaten": False,
+                    "note": new_note.strip()
+                }
+                if "meals" not in data:
+                    data["meals"] = []
+                
+                if existing_idx is not None:
+                    data["meals"][existing_idx] = new_entry
+                    st.toast(f"🔄 {new_date_str} 기존 식단이 업데이트되었습니다!")
+                else:
+                    data["meals"].append(new_entry)
+                    def sort_meal_key(m):
+                        d = parse_meal_date(m.get("date", ""))
+                        return d if d else date(9999, 12, 31)
+                    data["meals"].sort(key=sort_meal_key)
+                    st.toast(f"🎉 {new_date_str} ({k_dow}) 식단이 새로 추가되었습니다!")
+                
+                storage.save_data(data)
+                st.rerun()
+
+    # 🛠️ 2. 등록된 식단 날짜 수정 / 삭제
+    if meals_list:
+        with st.expander("🛠️ 등록된 식단 날짜 수정 / 삭제", expanded=False):
+            edit_options = [f"{idx+1}일차: {m['date']} ({m['day_of_week']})" for idx, m in enumerate(meals_list)]
+            sel_edit_label = st.selectbox("수정 또는 삭제할 식단 날짜 선택", edit_options, key="sel_edit_meal_idx")
+            edit_target_idx = edit_options.index(sel_edit_label)
+            target_m = meals_list[edit_target_idx]
+
+            all_choices = sorted(list(set(inv_names + target_m.get("morning", []) + target_m.get("lunch", []) + target_m.get("dinner", []))))
+            
+            c_ed_m, c_ed_l, c_ed_d = st.columns(3)
+            with c_ed_m:
+                ed_m = st.multiselect("🌅 아침 재료 수정", all_choices, default=[x for x in target_m.get("morning", []) if x in all_choices], key=f"ed_m_{edit_target_idx}")
+            with c_ed_l:
+                ed_l = st.multiselect("☀️ 점심 재료 수정", all_choices, default=[x for x in target_m.get("lunch", []) if x in all_choices], key=f"ed_l_{edit_target_idx}")
+            with c_ed_d:
+                ed_d = st.multiselect("🌙 저녁 재료 수정", all_choices, default=[x for x in target_m.get("dinner", []) if x in all_choices], key=f"ed_d_{edit_target_idx}")
+
+            ed_note = st.text_input("메모 / 특이사항 수정", value=target_m.get("note", ""), key=f"ed_note_{edit_target_idx}")
+
+            c_save_ed, c_del_ed = st.columns([2, 1])
+            with c_save_ed:
+                if st.button("💾 식단 수정 저장", type="primary", use_container_width=True, key=f"btn_save_ed_{edit_target_idx}"):
+                    target_m["morning"] = ed_m
+                    target_m["lunch"] = ed_l
+                    target_m["dinner"] = ed_d
+                    target_m["note"] = ed_note.strip()
+                    storage.save_data(data)
+                    st.toast(f"✅ {target_m['date']} 식단이 수정되었습니다!")
+                    st.rerun()
+            with c_del_ed:
+                if st.button(f"🗑️ {target_m['date']} 식단 삭제", use_container_width=True, key=f"btn_del_ed_{edit_target_idx}"):
+                    deleted_date = target_m['date']
+                    data["meals"].pop(edit_target_idx)
+                    storage.save_data(data)
+                    st.toast(f"🗑️ {deleted_date} 식단이 삭제되었습니다!")
+                    st.rerun()
+
+    st.write("")
     table_rows = []
     for m in data.get("meals", []):
         m_eaten, _ = get_meal_eaten_status(m, "morning", st.session_state.auto_deduct)
