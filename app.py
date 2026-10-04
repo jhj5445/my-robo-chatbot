@@ -83,39 +83,54 @@ st.markdown("""
         background: #eff6ff;
         border: 1px solid #bfdbfe;
         border-radius: 8px;
-        padding: 10px 14px;
-        margin-bottom: 15px;
-        font-size: 0.92rem;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        font-size: 0.88rem;
         color: #1e40af;
     }
 
     /* 📱 Mobile Optimized Media Queries */
     @media (max-width: 768px) {
         .block-container {
-            padding: 0.8rem 0.6rem 3rem 0.6rem !important;
+            padding: 0.5rem 0.6rem 2.5rem 0.6rem !important;
         }
         .mobile-ip-box {
             display: none !important;
         }
+        .auto-mode-banner {
+            display: none !important;
+        }
         .stButton button {
-            min-height: 42px !important;
-            font-size: 0.92rem !important;
+            min-height: 38px !important;
+            font-size: 0.86rem !important;
             border-radius: 8px !important;
+            padding: 4px 10px !important;
         }
         .tag-badge {
-            font-size: 0.8rem !important;
+            font-size: 0.78rem !important;
             padding: 2px 6px !important;
+            margin-right: 3px !important;
+            margin-bottom: 3px !important;
         }
         .card-urgent, .card-warning, .card-good {
-            padding: 10px !important;
-            margin-bottom: 8px !important;
+            padding: 8px 10px !important;
+            margin-bottom: 6px !important;
         }
         .stTabs [data-baseweb="tab-list"] {
             gap: 2px !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
         }
         .stTabs [data-baseweb="tab"] {
-            padding: 6px 8px !important;
-            font-size: 0.84rem !important;
+            padding: 5px 8px !important;
+            font-size: 0.8rem !important;
+            white-space: nowrap !important;
+        }
+        div[role="radiogroup"] {
+            background: #f1f5f9 !important;
+            padding: 3px !important;
+            border-radius: 10px !important;
+            gap: 4px !important;
         }
     }
 </style>
@@ -743,27 +758,18 @@ timeline_results, urgent_shortages, consumed_counts, surplus_items = calculate_s
 
 # Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🍽️ 오늘의 식단 & 자동 차감",
-    "🧊 큐브 제작 (입고)",
-    "📊 냉동실 큐브 재고 (소진일)",
-    "🛒 마트 장보기 (마감일 순)",
-    "📅 15일 식단표 전체보기",
-    "🥗 이유식 영양 & 궁합 가이드"
+    "🍽️ 오늘 식단",
+    "🧊 큐브 제작",
+    "📊 큐브 재고",
+    "🛒 장보기",
+    "📅 식단표",
+    "🥗 영양 가이드"
 ])
 
 # ==========================================
-# TAB 1: 오늘의 식단 & 스마트 자동 차감
+# TAB 1: 오늘의 식단 & 스마트 관리 (모바일 최적화)
 # ==========================================
 with tab1:
-    st.markdown(f"""
-    <div class="auto-mode-banner">
-        🤖 <b>스마트 자동 차감 기능 작동 중</b><br>
-        매일 날짜와 끼니 시간(아침 10시, 점심 14시, 저녁 19시)이 지나면 <b>버튼을 누르지 않아도 냉동실 재고가 알아서 자동 차감</b>됩니다.<br>
-        <small>※ 아기가 안 먹었거나 건너뛴 끼니만 <b>'❌ 건너뜀 (안 먹음)'</b> 버튼을 눌러 재고를 보존해 주세요.</small>
-    </div>
-    """, unsafe_allow_html=True)
-
-    c_date_sel, c_toggle = st.columns([3, 1])
     meals = data.get("meals", [])
     if not meals:
         st.warning("식단표 데이터가 없습니다.")
@@ -777,18 +783,35 @@ with tab1:
                 default_idx = idx
                 break
 
+        # Top Bar: Date picker & Auto deduct switch
+        c_date_sel, c_toggle = st.columns([3, 1])
         with c_date_sel:
-            selected_date_str = st.selectbox("📅 조회/관리 날짜 선택", date_options, index=default_idx)
+            selected_date_str = st.selectbox("📅 날짜 선택", date_options, index=default_idx, label_visibility="collapsed")
             selected_idx = date_options.index(selected_date_str)
             meal_entry = meals[selected_idx]
 
         with c_toggle:
-            st.session_state.auto_deduct = st.toggle("🤖 자동 차감 모드", value=True)
+            st.session_state.auto_deduct = st.toggle("🤖 자동 차감", value=True, help="10시·14시·19시 경과 시 냉동실 재고가 자동 차감됩니다.")
 
         if meal_entry.get("note"):
-            st.info(f"💡 **특이사항/소진 예정**: {meal_entry['note']}")
+            st.caption(f"💡 **특이사항**: {meal_entry['note']}")
 
-        col_m, col_l, col_d = st.columns(3)
+        # 📱 Mobile-friendly Meal Segmented Switcher (Default to current time of day)
+        curr_hour = now.hour
+        default_slot_choice = 0 if curr_hour < 11 else (1 if curr_hour < 16 else 2)
+        
+        c_slot_sel, c_view_all = st.columns([3, 1])
+        with c_slot_sel:
+            chosen_slot = st.radio(
+                "끼니 선택",
+                ["🌅 아침", "☀️ 점심", "🌙 저녁"],
+                index=default_slot_choice,
+                horizontal=True,
+                label_visibility="collapsed",
+                key="mobile_meal_slot_radio"
+            )
+        with c_view_all:
+            show_all_three = st.checkbox("세 끼 전체", value=False, key="chk_show_all_three", help="모바일에서 한 번에 3끼 모두 보려면 체크하세요.")
 
         def set_override(meal_obj, slot_type, override_val):
             meal_obj[f"{slot_type}_override"] = override_val
@@ -796,61 +819,62 @@ with tab1:
             st.rerun()
 
         # Slot card renderer with compact styling and one-click topping recommendation
-        def render_meal_slot_card(col_obj, slot_key, slot_name, slot_short, meal_obj):
-            with col_obj:
-                ings = meal_obj.get(slot_key, [])
-                st.markdown(f"### {slot_name}")
-                ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in ings])
-                st.markdown(ing_html, unsafe_allow_html=True)
-                
-                # Subtle compact pill tags for Golden / Alert combos
-                combo_res = evaluate_meal_combo(ings)
-                pill_html = ""
-                for g in combo_res["goldens"]:
-                    short_g = g.split(":")[0].strip()
-                    pill_html += f'<span style="display:inline-block; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:12px; padding:2px 8px; font-size:0.75rem; font-weight:600; margin-right:4px; margin-top:4px;">✨ {short_g}</span>'
-                for a in combo_res["alerts"]:
-                    pill_html += f'<span style="display:inline-block; background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:12px; padding:2px 8px; font-size:0.75rem; font-weight:600; margin-right:4px; margin-top:4px;">⚠️ {a}</span>'
-                
-                if pill_html:
-                    st.markdown(f'<div style="margin: 4px 0 6px 0; min-height: 28px;">{pill_html}</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<div style="margin: 4px 0 6px 0; min-height: 28px;"><span style="color:#94a3b8; font-size:0.75rem;">🌱 조화로운 식단 구성</span></div>', unsafe_allow_html=True)
+        def render_meal_slot_card(slot_key, slot_name, slot_short, meal_obj):
+            ings = meal_obj.get(slot_key, [])
+            is_eaten, status_text = get_meal_eaten_status(meal_obj, slot_key, st.session_state.auto_deduct)
+            
+            st.markdown(f"#### {slot_name}")
+            
+            # Ingredient tags
+            ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in ings])
+            st.markdown(ing_html, unsafe_allow_html=True)
+            
+            # Subtle compact pill tags for Golden / Alert combos
+            combo_res = evaluate_meal_combo(ings)
+            pill_html = ""
+            for g in combo_res["goldens"]:
+                short_g = g.split(":")[0].strip()
+                pill_html += f'<span style="display:inline-block; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:12px; padding:2px 7px; font-size:0.75rem; font-weight:600; margin-right:4px; margin-top:3px;">✨ {short_g}</span>'
+            for a in combo_res["alerts"]:
+                pill_html += f'<span style="display:inline-block; background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:12px; padding:2px 7px; font-size:0.75rem; font-weight:600; margin-right:4px; margin-top:3px;">⚠️ {a}</span>'
+            
+            if pill_html:
+                st.markdown(f'<div style="margin: 3px 0 5px 0;">{pill_html}</div>', unsafe_allow_html=True)
 
-                # 💡 [반찬 1개 더 추가 추천]
-                rec = get_best_topping_recommendation(ings, data.get("inventory", []), surplus_items)
-                if rec:
-                    surplus_tag = f"(+{rec['surplus']}개 잉여)" if rec["surplus"] > 0 else f"(재고 {rec['stock']}개)"
-                    badge_color = "#047857" if rec["type"] == "golden" else ("#0284c7" if rec["type"] == "gentle" else "#475569")
-                    
+            # 💡 [반찬 1개 더 추가 추천] - Compact 1-line bar
+            rec = get_best_topping_recommendation(ings, data.get("inventory", []), surplus_items)
+            if rec:
+                surplus_tag = f"(+{rec['surplus']}개 잉여)" if rec["surplus"] > 0 else f"(재고 {rec['stock']}개)"
+                badge_color = "#047857" if rec["type"] == "golden" else ("#0284c7" if rec["type"] == "gentle" else "#475569")
+                
+                c_rec_txt, c_rec_btn = st.columns([3, 1])
+                with c_rec_txt:
                     st.markdown(f"""
-                    <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; padding:6px 10px; margin:4px 0 6px 0; font-size:0.79rem; line-height:1.4;">
-                        <span style="font-weight:600; color:#334155;">💡 반찬 1개 더 추천:</span>
-                        <b style="color:{badge_color};">{rec['name']}</b> <small style="color:#64748b;">{surplus_tag}</small><br>
-                        <span style="color:#475569; font-size:0.73rem;">└ {rec['desc']}</span>
+                    <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; padding:5px 8px; font-size:0.78rem; line-height:1.35;">
+                        💡 <b>추천:</b> <b style="color:{badge_color};">{rec['name']}</b> <small style="color:#64748b;">{surplus_tag}</small><br>
+                        <span style="color:#475569; font-size:0.72rem;">└ {rec['desc']}</span>
                     </div>
                     """, unsafe_allow_html=True)
-
-                    if st.button(f"➕ '{rec['name']}' 바로 추가", key=f"quick_add_{slot_key}_{selected_idx}", use_container_width=True):
+                with c_rec_btn:
+                    st.write("")
+                    if st.button(f"➕ {rec['name']}", key=f"quick_add_{slot_key}_{selected_idx}", help=f"{rec['name']} 큐브를 이 끼니에 추가합니다", use_container_width=True):
                         meal_obj[slot_key].append(rec["name"])
                         storage.save_data(data)
-                        st.toast(f"🎉 {selected_date_str} {slot_name}에 '{rec['name']}' 큐브가 추가되었습니다!")
+                        st.toast(f"🎉 {selected_date_str} {slot_name}에 '{rec['name']}' 추가 완료!")
                         st.rerun()
-                else:
-                    st.markdown('<div style="margin:4px 0 6px 0; font-size:0.75rem; color:#94a3b8;">💡 추가 권장 큐브 없음</div>', unsafe_allow_html=True)
 
-                st.write("")
-                is_eaten, status_text = get_meal_eaten_status(meal_obj, slot_key, st.session_state.auto_deduct)
+            # Action row: Status / Eat button + Manage popover in 1 balanced line
+            c_act_btn, c_pop = st.columns([2, 1])
+            with c_act_btn:
                 if is_eaten:
-                    st.success(status_text)
-                    if st.button(f"❌ {slot_short} 안 먹음 (건너뜀)", key=f"skip_{slot_key}", use_container_width=True):
+                    if st.button(f"❌ {status_text} (취소)", key=f"skip_{slot_key}", use_container_width=True):
                         set_override(meal_obj, slot_key, "skipped")
                 else:
-                    st.info(status_text)
-                    if st.button(f"🥣 {slot_short} 식사 완료 처리", key=f"force_eat_{slot_key}", type="primary", use_container_width=True):
+                    if st.button(f"🥣 식사 완료 처리", key=f"force_eat_{slot_key}", type="primary", use_container_width=True):
                         set_override(meal_obj, slot_key, "eaten")
 
-                with st.popover(f"✏️ {slot_short} 재료 관리/삭제", use_container_width=True):
+            with c_pop:
+                with st.popover("✏️ 재료 관리", use_container_width=True):
                     st.caption(f"{slot_name} 재료 목록")
                     for ing in list(meal_obj.get(slot_key, [])):
                         c_txt, c_del = st.columns([3, 1])
@@ -860,80 +884,77 @@ with tab1:
                             storage.save_data(data)
                             st.rerun()
 
-        # Render Morning, Lunch, Dinner with balanced layout
-        render_meal_slot_card(col_m, "morning", "🌅 아침 식단", "아침", meal_entry)
-        render_meal_slot_card(col_l, "lunch", "☀️ 점심 식단", "점심", meal_entry)
-        render_meal_slot_card(col_d, "dinner", "🌙 저녁 식단", "저녁", meal_entry)
+        # Render Meals based on View Mode
+        if show_all_three:
+            col_m, col_l, col_d = st.columns(3)
+            with col_m:
+                render_meal_slot_card("morning", "🌅 아침 식단", "아침", meal_entry)
+            with col_l:
+                render_meal_slot_card("lunch", "☀️ 점심 식단", "점심", meal_entry)
+            with col_d:
+                render_meal_slot_card("dinner", "🌙 저녁 식단", "저녁", meal_entry)
+        else:
+            slot_info_map = {
+                "🌅 아침": ("morning", "🌅 아침 식단", "아침"),
+                "☀️ 점심": ("lunch", "☀️ 점심 식단", "점심"),
+                "🌙 저녁": ("dinner", "🌙 저녁 식단", "저녁"),
+            }
+            s_key, s_name, s_short = slot_info_map[chosen_slot]
+            render_meal_slot_card(s_key, s_name, s_short, meal_entry)
 
         # ==========================================
-        # 💡 [냉동실 털기] 빨리 소진해야 하는 큐브 추천 & 식단에 추가
+        # 💡 [냉동실 털기] 접이식 Expander로 정리하여 화면 깔끔화
         # ==========================================
         st.write("")
-        st.divider()
-        st.subheader("💡 [냉동실 털기] 잔량 잉여 큐브 소진 & 영양 궁합 스마트 추가")
-        st.caption("남은 15일 식단에 계획된 수량보다 냉동실에 더 많이 남아있는 **잉여 큐브**를 추천해 드립니다. 선택한 끼니의 기존 재료와의 **영양/가스 궁합(황금 궁합/주의)**을 실시간으로 분석해 최적의 큐브를 제안합니다!")
+        with st.expander("💡 [냉동실 털기] 남아도는 잉여 큐브 소진 & 추가 (선택사항)", expanded=False):
+            st.caption("남은 15일 식단에 계획된 수량보다 냉동실에 더 많이 남아있는 **잉여 큐브**를 원하는 끼니에 추가합니다.")
+            if not surplus_items:
+                st.success("🎉 현재 냉동실에 남아도는 잉여 큐브가 없습니다!")
+            else:
+                surplus_html = " &nbsp;|&nbsp; ".join([
+                    f"<b>{s['name']}</b>: <b style='color:#ef4444;'>+{s['surplus']}개</b> (잔여 {s['stock']}개)"
+                    for s in surplus_items[:6]
+                ])
+                st.markdown(f"""
+                <div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:0.83rem;">
+                    📢 <b>잉여 큐브:</b> {surplus_html}
+                </div>
+                """, unsafe_allow_html=True)
 
-        if not surplus_items:
-            st.success("🎉 현재 냉동실에 남아도는 잉여 큐브가 없습니다. 식단표와 완벽히 맞아떨어집니다!")
-        else:
-            surplus_html = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join([
-                f"<b>{s['name']}</b> ({s['category']}): <b style='color:#ef4444;'>+{s['surplus']}개 남아돌음</b> (냉동실 {s['stock']}개 / 남은필요 {s['future_need']}개)"
-                for s in surplus_items
-            ])
-            st.markdown(f"""
-            <div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:12px; margin-bottom:12px;">
-                📢 <b>우선 소진 권장 품목 (잉여 큐브):</b><br>
-                {surplus_html}
-            </div>
-            """, unsafe_allow_html=True)
+                c_add_slot, c_add_item, c_add_btn = st.columns([1, 2, 1])
+                slot_map = {"🌅 아침": "morning", "☀️ 점심": "lunch", "🌙 저녁": "dinner"}
+                with c_add_slot:
+                    target_slot = st.selectbox("끼니", ["🌅 아침", "☀️ 점심", "🌙 저녁"], key="surplus_slot_choice")
+                    target_slot_key = slot_map[target_slot]
+                    target_current_ings = meal_entry.get(target_slot_key, [])
 
-            c_add_slot, c_add_item, c_add_btn = st.columns([2, 3, 2])
-            slot_map = {"🌅 아침": "morning", "☀️ 점심": "lunch", "🌙 저녁": "dinner"}
-            with c_add_slot:
-                target_slot = st.selectbox("추가할 끼니 선택", ["🌅 아침", "☀️ 점심", "🌙 저녁"], key="surplus_slot_choice")
-                target_slot_key = slot_map[target_slot]
-                target_current_ings = meal_entry.get(target_slot_key, [])
+                with c_add_item:
+                    surplus_options = []
+                    opt_info_map = {}
+                    for s in surplus_items:
+                        s_name = s["name"]
+                        score_type, sim_msg = simulate_topping_addition(target_current_ings, s_name)
+                        tag = "🌟최고궁합" if score_type == "golden" else ("⚠️가스/주의" if score_type == "warning" else ("🌱순한채소" if score_type == "good" else "✅무난"))
+                        opt_label = f"{s_name} (+{s['surplus']}개) [{tag}]"
+                        surplus_options.append(opt_label)
+                        opt_info_map[opt_label] = (s_name, score_type, sim_msg)
 
-            with c_add_item:
-                surplus_options = []
-                opt_info_map = {}
-                for s in surplus_items:
-                    s_name = s["name"]
-                    score_type, sim_msg = simulate_topping_addition(target_current_ings, s_name)
-                    tag = "🌟최고궁합" if score_type == "golden" else ("⚠️가스/주의" if score_type == "warning" else ("🌱순한채소" if score_type == "good" else "✅무난"))
-                    opt_label = f"{s_name} (+{s['surplus']}개 남음) [{tag}]"
-                    surplus_options.append(opt_label)
-                    opt_info_map[opt_label] = (s_name, score_type, sim_msg)
+                    chosen_opt = st.selectbox("추가할 잉여 큐브", surplus_options, key="surplus_item_choice")
+                    chosen_ing_name, chosen_score, chosen_msg = opt_info_map[chosen_opt]
 
-                chosen_opt = st.selectbox("추가할 잉여 큐브 선택", surplus_options, key="surplus_item_choice")
-                chosen_ing_name, chosen_score, chosen_msg = opt_info_map[chosen_opt]
-                
-                # Show dynamic preview message below the selectbox
-                if chosen_score == "golden":
-                    st.caption(f":green[**{chosen_msg}**]")
-                elif chosen_score == "warning":
-                    st.caption(f":red[**{chosen_msg}**]")
-                else:
-                    st.caption(f":blue[{chosen_msg}]")
-
-            with c_add_btn:
-                st.write("")
-                st.write("")
-                if st.button("➕ 선택한 끼니에 큐브 추가하기", type="primary", use_container_width=True, key="btn_add_surplus"):
-                    slot_key = slot_map[target_slot]
-                    if chosen_ing_name in meal_entry.get(slot_key, []):
-                        st.warning(f"이미 {selected_date_str} {target_slot} 식단에 '{chosen_ing_name}'이(가) 포함되어 있습니다!")
-                    else:
-                        if slot_key not in meal_entry:
-                            meal_entry[slot_key] = []
-                        meal_entry[slot_key].append(chosen_ing_name)
-                        storage.save_data(data)
-                        if chosen_score == "warning":
-                            st.toast(f"⚠️ {chosen_ing_name} 큐브가 추가되었습니다. (궁합 주의: {chosen_msg})")
+                with c_add_btn:
+                    st.write("")
+                    if st.button("➕ 추가", type="primary", use_container_width=True, key="btn_add_surplus"):
+                        slot_key = slot_map[target_slot]
+                        if chosen_ing_name in meal_entry.get(slot_key, []):
+                            st.warning(f"이미 포함되어 있습니다!")
                         else:
-                            st.toast(f"🎉 {chosen_ing_name} 큐브 추가 완료!")
-                        st.success(f"🎉 {selected_date_str} {target_slot}에 '{chosen_ing_name}' 큐브가 추가되었습니다! 냉동실 잉여 재고가 소진됩니다.")
-                        st.rerun()
+                            if slot_key not in meal_entry:
+                                meal_entry[slot_key] = []
+                            meal_entry[slot_key].append(chosen_ing_name)
+                            storage.save_data(data)
+                            st.toast(f"🎉 '{chosen_ing_name}' 큐브 추가 완료!")
+                            st.rerun()
 
 # ==========================================
 # TAB 2: 큐브 제작 & 입고 등록
