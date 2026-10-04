@@ -693,6 +693,14 @@
   ],
   "production_logs": [
     {
+      "date": "2026-10-05",
+      "ingredient": "적채",
+      "category": "채소류",
+      "quantity": 22,
+      "exp_date": "2026-10-18",
+      "memo": ""
+    },
+    {
       "date": "2026-10-04",
       "ingredient": "애호박",
       "category": "채소류",
