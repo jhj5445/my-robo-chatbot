@@ -95,6 +95,8 @@ st.markdown("""
 # ==========================================
 # Google Sheets (Apps Script Web App) & Local Hybrid Storage Manager
 # ==========================================
+DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxUVJye2HTxhCHH08VnrhhzK9e7a3pfpK7-nGYQQX9wAqFIkxJbCidNUiDef7lsbabxhg/exec"
+
 CONFIG_FILE = "config.json"
 
 def load_config():
@@ -104,7 +106,7 @@ def load_config():
                 return json.load(f)
         except Exception:
             pass
-    return {}
+    return {"apps_script_url": DEFAULT_APPS_SCRIPT_URL}
 
 def save_config(cfg):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -121,6 +123,8 @@ class StorageManager:
         url = cfg.get("apps_script_url", "")
         if not url and "apps_script_url" in st.secrets:
             url = st.secrets["apps_script_url"]
+        if not url:
+            url = DEFAULT_APPS_SCRIPT_URL
         if url:
             self.apps_script_url = url.strip()
             self.is_connected = True
