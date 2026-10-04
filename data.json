@@ -70,7 +70,7 @@
       "category": "채소류",
       "name": "적채",
       "initial_stock": 0,
-      "current_stock": 0
+      "current_stock": 22
     },
     {
       "category": "채소류",
@@ -692,6 +692,14 @@
     }
   ],
   "production_logs": [
+    {
+      "date": "2026-10-05",
+      "ingredient": "양배추",
+      "category": "채소류",
+      "quantity": 15,
+      "exp_date": "2026-10-18",
+      "memo": ""
+    },
     {
       "date": "2026-10-05",
       "ingredient": "적채",
