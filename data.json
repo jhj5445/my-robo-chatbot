@@ -82,7 +82,7 @@
       "category": "채소류",
       "name": "고구마",
       "initial_stock": 0,
-      "current_stock": 0
+      "current_stock": 12
     },
     {
       "category": "채소류",
@@ -660,14 +660,6 @@
     }
   ],
   "production_logs": [
-    {
-      "date": "2026-10-05",
-      "ingredient": "고구마",
-      "category": "채소류",
-      "quantity": 12,
-      "exp_date": "2026-10-26",
-      "memo": ""
-    },
     {
       "date": "2026-10-04",
       "ingredient": "애호박",
