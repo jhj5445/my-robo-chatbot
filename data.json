@@ -16,26 +16,26 @@
       "category": "단백질",
       "name": "달걀",
       "initial_stock": 6,
-      "current_stock": 5
+      "current_stock": 6
     },
     {
       "category": "채소류",
       "name": "무",
       "initial_stock": 6,
-      "current_stock": 3,
+      "current_stock": 4,
       "manual_adjustment": -2
     },
     {
       "category": "채소류",
       "name": "브로콜리",
       "initial_stock": 3,
-      "current_stock": 11
+      "current_stock": 12
     },
     {
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 26
+      "current_stock": 27
     },
     {
       "category": "채소류",
@@ -119,13 +119,13 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 43
+      "current_stock": 44
     },
     {
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 14
+      "current_stock": 15
     },
     {
       "category": "곡류",
@@ -207,7 +207,8 @@
       "dinner_eaten": false,
       "note": "",
       "morning_override": "skipped",
-      "lunch_override": "eaten"
+      "lunch_override": "eaten",
+      "dinner_override": "eaten"
     },
     {
       "date": "10월6일",
