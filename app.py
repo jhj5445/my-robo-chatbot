@@ -392,7 +392,7 @@ def parse_meal_date(date_str):
     return None
 
 # Check if meal is eaten considering auto-deduction
-def get_meal_eaten_status(meal, slot_type, auto_mode=True):
+def get_meal_eaten_status(meal, slot_type, auto_mode=False):
     override_key = f"{slot_type}_override"
     override = meal.get(override_key, None)
     
@@ -582,7 +582,7 @@ def get_best_topping_recommendation(current_ingredients, inventory, surplus_item
     return candidates[0] if candidates else None
 
 # Calculate Chronological Depletion & Deadlines with Automatic Deduction
-def calculate_system_state(data, auto_mode=True):
+def calculate_system_state(data, auto_mode=False):
     meals = data.get("meals", [])
     inventory = data.get("inventory", [])
     prod_logs = data.get("production_logs", [])
@@ -764,7 +764,7 @@ with col_top_btn:
             st.error(f"❌ 실패: {msg}")
 
 if "auto_deduct" not in st.session_state:
-    st.session_state.auto_deduct = True
+    st.session_state.auto_deduct = False
 
 timeline_results, urgent_shortages, consumed_counts, surplus_items = calculate_system_state(data, auto_mode=st.session_state.auto_deduct)
 inv_names = sorted([item["name"] for item in data.get("inventory", [])])
@@ -804,7 +804,7 @@ with tab1:
             meal_entry = meals[selected_idx]
 
         with c_toggle:
-            st.session_state.auto_deduct = st.toggle("🤖 자동 차감", value=True, help="10시·14시·19시 경과 시 냉동실 재고가 자동 차감됩니다.")
+            st.session_state.auto_deduct = st.toggle("🤖 자동 차감", value=st.session_state.auto_deduct, help="기본값은 '수동 차감(OFF)'입니다. 켜두시면 10시·14시·19시 시간 경과 시 냉동실 재고가 자동 차감됩니다.")
 
         if meal_entry.get("note"):
             st.caption(f"💡 **특이사항**: {meal_entry['note']}")
@@ -836,7 +836,20 @@ with tab1:
             ings = meal_obj.get(slot_key, [])
             is_eaten, status_text = get_meal_eaten_status(meal_obj, slot_key, st.session_state.auto_deduct)
             
-            st.markdown(f"#### {slot_name}")
+            if is_eaten:
+                st.markdown(f"""
+                <div style="background:#ecfdf5; border:1.5px solid #10b981; border-radius:10px; padding:6px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:1.1rem; font-weight:bold; color:#065f46;">{slot_name}</span>
+                    <span style="background:#10b981; color:white; font-size:0.75rem; font-weight:bold; padding:2px 8px; border-radius:12px;">{status_text}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:6px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:1.1rem; font-weight:bold; color:#1e293b;">{slot_name}</span>
+                    <span style="background:#f1f5f9; color:#64748b; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:12px; border:1px solid #e2e8f0;">⏳ 식사 전</span>
+                </div>
+                """, unsafe_allow_html=True)
             
             # Ingredient tags
             ing_html = "".join([f'<span class="tag-badge {get_badge_class(get_ingredient_category(x))}">{x}</span>' for x in ings])
@@ -1551,11 +1564,68 @@ with tab5:
                     st.rerun()
 
     st.write("")
+    today_str = f"{now.month}월{now.day}일"
+    
+    # Legend guide
+    st.markdown("""
+    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:0.83rem; margin-bottom:12px; background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0;">
+        <span>🎨 <b>식단 색상 구분:</b></span>
+        <span style="background:#dcfce7; border:1px solid #86efac; color:#166534; padding:2px 8px; border-radius:6px; font-weight:bold;">✅ 식사 완료 (연초록색 강조)</span>
+        <span style="background:#ffffff; border:1px solid #e2e8f0; color:#64748b; padding:2px 8px; border-radius:6px;">⬜ 식사 대기 (미완료)</span>
+        <span style="color:#64748b; font-size:0.78rem;">(💡 식사 완료 처리는 <b>[🍽️ 오늘 식단]</b> 탭에서 끼니별로 간편하게 하실 수 있습니다)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    def render_table_slot_cell(ings, is_eaten):
+        if not ings:
+            return '<td style="padding:10px 12px; color:#cbd5e1; font-size:0.82rem; border-bottom:1px solid #e2e8f0; text-align:center;">-</td>'
+        ings_txt = ", ".join(ings)
+        if is_eaten:
+            return f'''<td style="padding:10px 12px; background:#dcfce7; border-bottom:1px solid #bbf7d0; border-left:1px solid #bbf7d0; color:#14532d;">
+                <div style="margin-bottom:3px;">
+                    <span style="display:inline-block; background:#16a34a; color:white; font-size:0.68rem; font-weight:bold; padding:1px 6px; border-radius:10px;">✅ 완료</span>
+                </div>
+                <div style="font-weight:600; font-size:0.84rem; line-height:1.4;">{ings_txt}</div>
+            </td>'''
+        else:
+            return f'''<td style="padding:10px 12px; background:#ffffff; border-bottom:1px solid #f1f5f9; border-left:1px solid #f1f5f9; color:#334155;">
+                <div style="margin-bottom:3px;">
+                    <span style="display:inline-block; background:#f1f5f9; color:#64748b; font-size:0.68rem; padding:1px 6px; border-radius:10px; border:1px solid #e2e8f0;">대기</span>
+                </div>
+                <div style="font-size:0.84rem; line-height:1.4; color:#475569;">{ings_txt}</div>
+            </td>'''
+
+    html_rows = []
     table_rows = []
     for m in data.get("meals", []):
         m_eaten, _ = get_meal_eaten_status(m, "morning", st.session_state.auto_deduct)
         l_eaten, _ = get_meal_eaten_status(m, "lunch", st.session_state.auto_deduct)
         d_eaten, _ = get_meal_eaten_status(m, "dinner", st.session_state.auto_deduct)
+        
+        is_today = (m["date"].replace(" ", "") == today_str)
+        all_eaten = (m_eaten and l_eaten and d_eaten)
+        
+        date_badge = ""
+        if is_today:
+            date_badge = '<br><span style="display:inline-block; background:#3b82f6; color:white; font-size:0.68rem; font-weight:bold; padding:1px 6px; border-radius:10px; margin-top:2px;">📍 오늘</span>'
+        elif all_eaten:
+            date_badge = '<br><span style="display:inline-block; background:#10b981; color:white; font-size:0.68rem; font-weight:bold; padding:1px 6px; border-radius:10px; margin-top:2px;">🎉 올클리어</span>'
+
+        date_bg = "#eff6ff" if is_today else ("#f0fdf4" if all_eaten else "#f8fafc")
+        
+        row_html = f'''<tr>
+            <td style="padding:10px 12px; background:{date_bg}; border-bottom:1px solid #e2e8f0; font-weight:bold; color:#1e293b; white-space:nowrap; vertical-align:middle;">
+                {m["date"]} ({m["day_of_week"]}){date_badge}
+            </td>
+            {render_table_slot_cell(m.get("morning", []), m_eaten)}
+            {render_table_slot_cell(m.get("lunch", []), l_eaten)}
+            {render_table_slot_cell(m.get("dinner", []), d_eaten)}
+            <td style="padding:10px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0; border-left:1px solid #f1f5f9; font-size:0.8rem; color:#64748b; vertical-align:middle;">
+                {m.get("note", "-") or "-"}
+            </td>
+        </tr>'''
+        html_rows.append(row_html)
+
         table_rows.append({
             "날짜": m["date"],
             "요일": m["day_of_week"],
@@ -1565,7 +1635,28 @@ with tab5:
             "비고": m.get("note", "")
         })
 
-    st.dataframe(table_rows, use_container_width=True, hide_index=True)
+    full_table_html = f'''
+    <div style="overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:15px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <table style="width:100%; border-collapse:collapse; font-size:0.85rem; font-family:-apple-system, BlinkMacSystemFont, sans-serif; text-align:left; min-width:680px;">
+      <thead>
+        <tr style="background:#e2e8f0; border-bottom:2px solid #cbd5e1; color:#334155; font-size:0.86rem;">
+          <th style="padding:10px 12px; width:15%;">📅 날짜 (요일)</th>
+          <th style="padding:10px 12px; width:26%;">🌅 아침 식단</th>
+          <th style="padding:10px 12px; width:26%;">☀️ 점심 식단</th>
+          <th style="padding:10px 12px; width:26%;">🌙 저녁 식단</th>
+          <th style="padding:10px 12px; width:7%;">비고</th>
+        </tr>
+      </thead>
+      <tbody>
+        {"".join(html_rows)}
+      </tbody>
+    </table>
+    </div>
+    '''
+    st.markdown(full_table_html, unsafe_allow_html=True)
+
+    with st.expander("📋 텍스트 표로 보기 (클립보드 복사용)", expanded=False):
+        st.dataframe(table_rows, use_container_width=True, hide_index=True)
 
     st.divider()
     st.subheader("💾 데이터 내보내기 & 영구 저장")
