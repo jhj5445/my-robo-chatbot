@@ -707,12 +707,25 @@ def calculate_system_state(data, auto_mode=True):
                 "urgency_score": urgency_score
             })
 
+        # Depletion timing score for sorting (lower score = depleted sooner)
+        if calc_stock == 0 and future_need > 0:
+            depletion_rank = -1000
+        elif depletion_slot:
+            depletion_rank = depletion_slot["slot_idx"]
+        elif first_deficit_slot:
+            depletion_rank = first_deficit_slot["slot_idx"]
+        elif future_need > 0:
+            depletion_rank = 10000 + (calc_stock - future_need)
+        else:
+            depletion_rank = 50000 - calc_stock if calc_stock > 0 else 90000
+
         timeline_results[name] = {
             "stock": calc_stock,
             "future_need": future_need,
             "net": calc_stock - future_need,
             "depletion_desc": depletion_desc,
-            "depletion_slot": depletion_slot
+            "depletion_slot": depletion_slot,
+            "depletion_rank": depletion_rank
         }
 
     shortages.sort(key=lambda x: (x["urgency_score"], -x["shortage"]))
@@ -983,60 +996,69 @@ with tab2:
     inv_names = [item["name"] for item in data.get("inventory", [])]
     inv_names.sort()
 
-    with st.form("make_cube_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            sel_mode = st.radio("재료 선택 방식", ["기존 재료 선택", "➕ 새 재료 직접 추가"], horizontal=True)
-            if sel_mode == "기존 재료 선택":
-                cube_ingredient = st.selectbox("품목 (재료)", inv_names)
-                cube_category = get_ingredient_category(cube_ingredient)
-            else:
-                cube_ingredient = st.text_input("새 재료 이름 (예: 콜리플라워, 비트)")
-                cube_category = st.selectbox("분류", ["채소류", "단백질", "곡류", "과일/기타"])
+    c1, c2 = st.columns(2)
+    with c1:
+        sel_mode = st.radio("재료 선택 방식", ["기존 재료 선택", "➕ 새 재료 직접 추가"], horizontal=True, key="cube_sel_mode")
+        if sel_mode == "기존 재료 선택":
+            cube_ingredient = st.selectbox("품목 (재료)", inv_names, key="cube_sel_ing")
+            cube_category = get_ingredient_category(cube_ingredient)
+        else:
+            cube_ingredient = st.text_input("새 재료 이름 (예: 콜리플라워, 비트)", key="cube_custom_ing")
+            cube_category = st.selectbox("분류", ["채소류", "단백질", "곡류", "과일/기타"], key="cube_custom_cat")
 
-        with c2:
-            cube_qty = st.number_input("제작 수량 (개)", min_value=1, max_value=60, value=12, step=1)
-            today_date = now.date()
-            make_date = st.date_input("제작일", value=today_date)
-            exp_date = st.date_input("권장 유통기한 (제작일 + 3주)", value=make_date + timedelta(days=21))
+    with c2:
+        cube_qty = st.number_input("제작 수량 (개)", min_value=1, max_value=60, value=12, step=1, key="cube_qty_input")
+        today_date = now.date()
+        make_date = st.date_input("제작일", value=today_date, key="cube_make_date")
 
-        memo = st.text_input("메모 (선택사항)", placeholder="예: 15g 큐브 12구 1판, 무항생제 닭안심 사용")
+        # Dynamic default 2 weeks (14 days) based on make_date; manual override preserved
+        if "prev_cube_make_date" not in st.session_state or st.session_state["prev_cube_make_date"] != make_date:
+            st.session_state["prev_cube_make_date"] = make_date
+            st.session_state["cube_exp_date"] = make_date + timedelta(days=14)
 
-        submit_cube = st.form_submit_button("🧊 냉동실 큐브 입고 등록 (+ 반영하기)", type="primary", use_container_width=True)
+        exp_date = st.date_input(
+            "권장 소비기한 (제작일 + 2주 기본 권장)",
+            key="cube_exp_date",
+            help="이유식 큐브는 신선도와 영양 보존을 위해 냉동 보관 2주 이내 소비를 권장합니다. 필요한 경우 날짜를 직접 변경하실 수 있습니다."
+        )
 
-        if submit_cube:
-            if not cube_ingredient.strip():
-                st.error("재료명을 입력해주세요.")
-            else:
-                ing_name = cube_ingredient.strip()
-                found = False
-                for item in data["inventory"]:
-                    if item["name"] == ing_name:
-                        found = True
-                        break
-                if not found:
-                    data["inventory"].append({
-                        "category": cube_category,
-                        "name": ing_name,
-                        "initial_stock": 0,
-                        "current_stock": 0,
-                        "manual_adjustment": 0
-                    })
+    memo = st.text_input("메모 (선택사항)", placeholder="예: 15g 큐브 12구 1판, 무항생제 닭안심 사용", key="cube_memo_input")
 
-                if "production_logs" not in data:
-                    data["production_logs"] = []
-                data["production_logs"].insert(0, {
-                    "date": str(make_date),
-                    "ingredient": ing_name,
+    submit_cube = st.button("🧊 냉동실 큐브 입고 등록 (+ 반영하기)", type="primary", use_container_width=True, key="btn_submit_cube")
+
+    if submit_cube:
+        if not cube_ingredient.strip():
+            st.error("재료명을 입력해주세요.")
+        else:
+            ing_name = cube_ingredient.strip()
+            found = False
+            for item in data["inventory"]:
+                if item["name"] == ing_name:
+                    found = True
+                    break
+            if not found:
+                data["inventory"].append({
                     "category": cube_category,
-                    "quantity": int(cube_qty),
-                    "exp_date": str(exp_date),
-                    "memo": memo
+                    "name": ing_name,
+                    "initial_stock": 0,
+                    "current_stock": 0,
+                    "manual_adjustment": 0
                 })
 
-                storage.save_data(data)
-                st.success(f"🎉 [{ing_name}] 큐브 +{cube_qty}개가 성공적으로 입고되었습니다!")
-                st.rerun()
+            if "production_logs" not in data:
+                data["production_logs"] = []
+            data["production_logs"].insert(0, {
+                "date": str(make_date),
+                "ingredient": ing_name,
+                "category": cube_category,
+                "quantity": int(cube_qty),
+                "exp_date": str(exp_date),
+                "memo": memo.strip()
+            })
+
+            storage.save_data(data)
+            st.toast(f"🎉 [{ing_name}] 큐브 +{cube_qty}개가 성공적으로 입고되었습니다!")
+            st.rerun()
 
     st.divider()
     st.subheader("📋 최근 큐브 제작 (입고) 내역")
@@ -1085,9 +1107,63 @@ with tab3:
         """, unsafe_allow_html=True)
 
     st.write("")
-    filter_cat = st.radio("카테고리 필터", ["전체", "단백질", "채소류", "곡류"], horizontal=True)
+    c_filter, c_sort = st.columns([3, 2])
+    with c_filter:
+        filter_cat = st.radio("📂 카테고리 필터", ["전체", "단백질", "채소류", "곡류"], horizontal=True, key="tab3_filter_cat")
+    with c_sort:
+        sort_by = st.selectbox("🔄 정렬 기준", [
+            "⏰ 소진시점 빠른 순 (임박/부족순 ⭐)",
+            "⏰ 소진시점 여유 있는 순",
+            "🧊 실재고 적은 순 (0개 우선)",
+            "🧊 실재고 많은 순",
+            "⌛ 권장 소비기한 임박순 (제작 2주 기준)",
+            "🏷️ 가나다 이름순"
+        ], key="tab3_sort_by")
+
+    # Map of latest production logs per ingredient
+    latest_logs = {}
+    for log in data.get("production_logs", []):
+        ing = log.get("ingredient")
+        if ing and ing not in latest_logs:
+            latest_logs[ing] = log
 
     filtered_inv = [item for item in inv if filter_cat == "전체" or item["category"] == filter_cat]
+
+    if sort_by == "⏰ 소진시점 빠른 순 (임박/부족순 ⭐)":
+        filtered_inv.sort(key=lambda x: (
+            timeline_results.get(x["name"], {}).get("depletion_rank", 99999),
+            -timeline_results.get(x["name"], {}).get("future_need", 0),
+            x["name"]
+        ))
+    elif sort_by == "⏰ 소진시점 여유 있는 순":
+        filtered_inv.sort(key=lambda x: (
+            -timeline_results.get(x["name"], {}).get("depletion_rank", 99999),
+            -timeline_results.get(x["name"], {}).get("stock", 0),
+            x["name"]
+        ))
+    elif sort_by == "🧊 실재고 적은 순 (0개 우선)":
+        filtered_inv.sort(key=lambda x: (
+            timeline_results.get(x["name"], {}).get("stock", 0),
+            -timeline_results.get(x["name"], {}).get("future_need", 0),
+            x["name"]
+        ))
+    elif sort_by == "🧊 실재고 많은 순":
+        filtered_inv.sort(key=lambda x: (
+            -timeline_results.get(x["name"], {}).get("stock", 0),
+            x["name"]
+        ))
+    elif sort_by == "⌛ 권장 소비기한 임박순 (제작 2주 기준)":
+        def exp_sort_key(item):
+            log = latest_logs.get(item["name"])
+            if log and log.get("exp_date"):
+                try:
+                    return (0, datetime.strptime(log["exp_date"], "%Y-%m-%d").date())
+                except:
+                    pass
+            return (1, date(9999, 12, 31))
+        filtered_inv.sort(key=exp_sort_key)
+    elif sort_by == "🏷️ 가나다 이름순":
+        filtered_inv.sort(key=lambda x: x["name"])
 
     for item in filtered_inv:
         name = item["name"]
@@ -1107,6 +1183,32 @@ with tab3:
             card_class = "card-good"
             badge_html = '<span style="color:#10b981; font-weight:bold;">✅ 충분/여유</span>'
 
+        # Check latest production / expiry info
+        log_info_html = ""
+        log = latest_logs.get(name)
+        if log:
+            exp_str = log.get("exp_date", "")
+            make_str = log.get("date", "")
+            exp_badge = ""
+            if exp_str:
+                try:
+                    exp_d = datetime.strptime(exp_str, "%Y-%m-%d").date()
+                    d_left = (exp_d - now.date()).days
+                    if d_left < 0:
+                        exp_badge = f'<span style="color:#ef4444; font-weight:bold; background:#fee2e2; border:1px solid #fca5a5; padding:1px 6px; border-radius:4px; font-size:0.75rem;">🚨 소비기한 경과 ({abs(d_left)}일 전)</span>'
+                    elif d_left <= 3:
+                        exp_badge = f'<span style="color:#d97706; font-weight:bold; background:#fef3c7; border:1px solid #fcd34d; padding:1px 6px; border-radius:4px; font-size:0.75rem;">⏳ 소비기한 임박 (D-{d_left})</span>'
+                    else:
+                        exp_badge = f'<span style="color:#059669; font-weight:600; background:#ecfdf5; border:1px solid #a7f3d0; padding:1px 6px; border-radius:4px; font-size:0.75rem;">D-{d_left} 남음</span>'
+                except:
+                    pass
+            log_info_html = f"""
+            <div style="margin-top:5px; padding:4px 8px; background:rgba(255,255,255,0.65); border-radius:6px; font-size:0.83rem; color:#475569; display:flex; justify-content:space-between; align-items:center;">
+                <span>🧊 <b>최근 제작:</b> {make_str} | ⌛ <b>권장 소비기한(2주):</b> {exp_str}</span>
+                <span>{exp_badge}</span>
+            </div>
+            """
+
         c_card, c_adj = st.columns([4, 2])
         with c_card:
             st.markdown(f"""
@@ -1125,6 +1227,7 @@ with tab3:
                 <div style="margin-top:6px; padding:6px 10px; background:rgba(255,255,255,0.7); border-radius:6px; font-size:0.9rem;">
                     ⏰ <b>예상 소진 시점:</b> <b>{dep_desc}</b>
                 </div>
+                {log_info_html}
             </div>
             """, unsafe_allow_html=True)
         with c_adj:
