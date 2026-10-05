@@ -4,7 +4,7 @@
       "category": "단백질",
       "name": "소고기",
       "initial_stock": 12,
-      "current_stock": 11
+      "current_stock": 10
     },
     {
       "category": "단백질",
@@ -16,37 +16,38 @@
       "category": "단백질",
       "name": "달걀",
       "initial_stock": 6,
-      "current_stock": 5
+      "current_stock": 4
     },
     {
       "category": "채소류",
       "name": "무",
       "initial_stock": 6,
-      "current_stock": 4
+      "current_stock": 3,
+      "manual_adjustment": -1
     },
     {
       "category": "채소류",
       "name": "브로콜리",
       "initial_stock": 3,
-      "current_stock": 12
+      "current_stock": 10
     },
     {
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 25
+      "current_stock": 24
     },
     {
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 7
+      "current_stock": 6
     },
     {
       "category": "채소류",
       "name": "당근",
       "initial_stock": 13,
-      "current_stock": 12
+      "current_stock": 11
     },
     {
       "category": "채소류",
@@ -76,7 +77,7 @@
       "category": "채소류",
       "name": "애호박",
       "initial_stock": 0,
-      "current_stock": 13
+      "current_stock": 12
     },
     {
       "category": "채소류",
@@ -118,19 +119,19 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 42
+      "current_stock": 40
     },
     {
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 14
+      "current_stock": 13
     },
     {
       "category": "곡류",
       "name": "오트밀",
       "initial_stock": 15,
-      "current_stock": 14
+      "current_stock": 13
     },
     {
       "category": "곡류",
