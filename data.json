@@ -41,7 +41,7 @@
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 7
+      "current_stock": 20
     },
     {
       "category": "채소류",
@@ -219,7 +219,8 @@
         "달걀",
         "브로콜리",
         "양배추",
-        "무"
+        "무",
+        "애호박"
       ],
       "lunch": [
         "쌀",
