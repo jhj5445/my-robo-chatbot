@@ -4,56 +4,56 @@
       "category": "단백질",
       "name": "소고기",
       "initial_stock": 12,
-      "current_stock": 10
+      "current_stock": 12
     },
     {
       "category": "단백질",
       "name": "닭고기",
       "initial_stock": 4,
-      "current_stock": 2
+      "current_stock": 4
     },
     {
       "category": "단백질",
       "name": "달걀",
       "initial_stock": 6,
-      "current_stock": 4
+      "current_stock": 6
     },
     {
       "category": "채소류",
       "name": "무",
       "initial_stock": 6,
-      "current_stock": 0,
+      "current_stock": 4,
       "manual_adjustment": -2
     },
     {
       "category": "채소류",
       "name": "브로콜리",
       "initial_stock": 3,
-      "current_stock": 10
+      "current_stock": 13
     },
     {
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 23
+      "current_stock": 27
     },
     {
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 6
+      "current_stock": 8
     },
     {
       "category": "채소류",
       "name": "당근",
       "initial_stock": 13,
-      "current_stock": 11
+      "current_stock": 13
     },
     {
       "category": "채소류",
       "name": "아욱",
       "initial_stock": 9,
-      "current_stock": 7
+      "current_stock": 9
     },
     {
       "category": "채소류",
@@ -77,7 +77,7 @@
       "category": "채소류",
       "name": "애호박",
       "initial_stock": 0,
-      "current_stock": 11
+      "current_stock": 14
     },
     {
       "category": "채소류",
@@ -119,25 +119,25 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 39
+      "current_stock": 45
     },
     {
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 13
+      "current_stock": 15
     },
     {
       "category": "곡류",
       "name": "오트밀",
       "initial_stock": 15,
-      "current_stock": 13
+      "current_stock": 15
     },
     {
       "category": "곡류",
       "name": "보리",
       "initial_stock": 15,
-      "current_stock": 13
+      "current_stock": 15
     }
   ],
   "meals": [
@@ -206,7 +206,7 @@
       "lunch_eaten": false,
       "dinner_eaten": false,
       "note": "",
-      "morning_override": "skipped"
+      "morning_override": "eaten"
     },
     {
       "date": "10월6일",
