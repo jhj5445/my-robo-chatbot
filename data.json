@@ -143,6 +143,13 @@
       "category": "곡류",
       "name": "쌀퀴노아죽",
       "initial_stock": 0,
+      "current_stock": 6,
+      "manual_adjustment": 0
+    },
+    {
+      "category": "곡류",
+      "name": "쌀죽",
+      "initial_stock": 0,
       "current_stock": 0,
       "manual_adjustment": 0
     }
@@ -707,6 +714,14 @@
     }
   ],
   "production_logs": [
+    {
+      "date": "2026-10-05",
+      "ingredient": "쌀죽",
+      "category": "곡류",
+      "quantity": 3,
+      "exp_date": "2026-10-19",
+      "memo": ""
+    },
     {
       "date": "2026-10-05",
       "ingredient": "쌀퀴노아죽",
