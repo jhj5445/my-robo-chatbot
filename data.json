@@ -150,7 +150,7 @@
       "category": "곡류",
       "name": "쌀죽",
       "initial_stock": 0,
-      "current_stock": 0,
+      "current_stock": 3,
       "manual_adjustment": 0
     }
   ],
@@ -256,7 +256,8 @@
       "morning_eaten": false,
       "lunch_eaten": false,
       "dinner_eaten": false,
-      "note": "★ 브로콜리(아침), 무(저녁) 큐브 소진"
+      "note": "★ 브로콜리(아침), 무(저녁) 큐브 소진",
+      "dinner_override": "eaten"
     },
     {
       "date": "10월7일",
