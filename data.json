@@ -10,7 +10,7 @@
       "category": "단백질",
       "name": "닭고기",
       "initial_stock": 4,
-      "current_stock": 2
+      "current_stock": 1
     },
     {
       "category": "단백질",
@@ -41,13 +41,13 @@
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 19
+      "current_stock": 18
     },
     {
       "category": "채소류",
       "name": "당근",
       "initial_stock": 13,
-      "current_stock": 11
+      "current_stock": 10
     },
     {
       "category": "채소류",
@@ -71,13 +71,13 @@
       "category": "채소류",
       "name": "적채",
       "initial_stock": 0,
-      "current_stock": 22
+      "current_stock": 21
     },
     {
       "category": "채소류",
       "name": "애호박",
       "initial_stock": 0,
-      "current_stock": 10
+      "current_stock": 9
     },
     {
       "category": "채소류",
@@ -143,7 +143,7 @@
       "category": "곡류",
       "name": "쌀퀴노아죽",
       "initial_stock": 0,
-      "current_stock": 6,
+      "current_stock": 5,
       "manual_adjustment": 0
     },
     {
@@ -292,7 +292,8 @@
       "lunch_eaten": false,
       "dinner_eaten": false,
       "note": "★ 닭고기(아침) 큐브 소진 / 식단 교체",
-      "dinner_override": "eaten"
+      "dinner_override": "eaten",
+      "lunch_override": "eaten"
     },
     {
       "date": "10월8일",
