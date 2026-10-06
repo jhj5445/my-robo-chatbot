@@ -291,7 +291,8 @@
       "morning_eaten": false,
       "lunch_eaten": false,
       "dinner_eaten": false,
-      "note": "★ 닭고기(아침) 큐브 소진 / 식단 교체"
+      "note": "★ 닭고기(아침) 큐브 소진 / 식단 교체",
+      "dinner_override": "eaten"
     },
     {
       "date": "10월8일",
