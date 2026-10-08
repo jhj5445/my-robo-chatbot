@@ -360,7 +360,8 @@
       "morning_eaten": false,
       "lunch_eaten": false,
       "dinner_eaten": false,
-      "note": "한글날"
+      "note": "한글날",
+      "morning_override": "eaten"
     },
     {
       "date": "10월10일",
