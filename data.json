@@ -721,6 +721,14 @@
   ],
   "production_logs": [
     {
+      "date": "2026-10-08",
+      "ingredient": "고구마",
+      "category": "채소류",
+      "quantity": 9,
+      "exp_date": "2026-10-22",
+      "memo": ""
+    },
+    {
       "date": "2026-10-05",
       "ingredient": "쌀죽",
       "category": "곡류",
