@@ -16,7 +16,7 @@
       "category": "단백질",
       "name": "달걀",
       "initial_stock": 6,
-      "current_stock": 6
+      "current_stock": 5
     },
     {
       "category": "채소류",
@@ -47,7 +47,7 @@
       "category": "채소류",
       "name": "당근",
       "initial_stock": 13,
-      "current_stock": 10
+      "current_stock": 9
     },
     {
       "category": "채소류",
@@ -65,7 +65,7 @@
       "category": "채소류",
       "name": "청경채",
       "initial_stock": 7,
-      "current_stock": 7
+      "current_stock": 6
     },
     {
       "category": "채소류",
@@ -77,13 +77,13 @@
       "category": "채소류",
       "name": "애호박",
       "initial_stock": 0,
-      "current_stock": 9
+      "current_stock": 8
     },
     {
       "category": "채소류",
       "name": "고구마",
       "initial_stock": 0,
-      "current_stock": 18
+      "current_stock": 17
     },
     {
       "category": "채소류",
@@ -119,13 +119,13 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 40
+      "current_stock": 39
     },
     {
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 15
+      "current_stock": 14
     },
     {
       "category": "곡류",
@@ -361,7 +361,8 @@
       "lunch_eaten": false,
       "dinner_eaten": false,
       "note": "한글날",
-      "morning_override": "eaten"
+      "morning_override": "eaten",
+      "lunch_override": "eaten"
     },
     {
       "date": "10월10일",
