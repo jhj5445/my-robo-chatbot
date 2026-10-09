@@ -119,8 +119,8 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 21,
-      "manual_adjustment": -18
+      "current_stock": 20,
+      "manual_adjustment": -19
     },
     {
       "category": "곡류",
