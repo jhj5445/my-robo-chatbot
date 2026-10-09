@@ -401,7 +401,8 @@
       "morning_eaten": false,
       "lunch_eaten": false,
       "dinner_eaten": false,
-      "note": "★ 양파(점심) 큐브 소진"
+      "note": "★ 양파(점심) 큐브 소진",
+      "morning_override": "eaten"
     },
     {
       "date": "10월11일",
