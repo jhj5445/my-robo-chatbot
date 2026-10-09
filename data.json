@@ -61,8 +61,8 @@
       "category": "채소류",
       "name": "양파",
       "initial_stock": 4,
-      "current_stock": 2,
-      "manual_adjustment": -1
+      "current_stock": 1,
+      "manual_adjustment": -2
     },
     {
       "category": "채소류",
