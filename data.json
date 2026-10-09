@@ -17,8 +17,8 @@
       "category": "단백질",
       "name": "달걀",
       "initial_stock": 6,
-      "current_stock": 3,
-      "manual_adjustment": -3
+      "current_stock": 2,
+      "manual_adjustment": -4
     },
     {
       "category": "채소류",
