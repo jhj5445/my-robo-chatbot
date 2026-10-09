@@ -61,7 +61,7 @@
       "category": "채소류",
       "name": "양파",
       "initial_stock": 4,
-      "current_stock": 1,
+      "current_stock": 0,
       "manual_adjustment": -2
     },
     {
@@ -375,7 +375,6 @@
       "morning": [
         "쌀",
         "퀴노아",
-        "닭고기",
         "적채",
         "사과",
         "고구마"
