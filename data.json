@@ -132,8 +132,8 @@
       "category": "곡류",
       "name": "오트밀",
       "initial_stock": 15,
-      "current_stock": 4,
-      "manual_adjustment": -8
+      "current_stock": 3,
+      "manual_adjustment": -9
     },
     {
       "category": "곡류",
