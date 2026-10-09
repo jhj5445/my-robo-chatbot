@@ -43,13 +43,13 @@
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 18
+      "current_stock": 17
     },
     {
       "category": "채소류",
       "name": "당근",
       "initial_stock": 13,
-      "current_stock": 9
+      "current_stock": 8
     },
     {
       "category": "채소류",
@@ -74,7 +74,7 @@
       "category": "채소류",
       "name": "적채",
       "initial_stock": 0,
-      "current_stock": 20
+      "current_stock": 19
     },
     {
       "category": "채소류",
@@ -86,7 +86,7 @@
       "category": "채소류",
       "name": "고구마",
       "initial_stock": 0,
-      "current_stock": 17
+      "current_stock": 16
     },
     {
       "category": "채소류",
@@ -122,14 +122,14 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 16,
+      "current_stock": 15,
       "manual_adjustment": -22
     },
     {
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 14
+      "current_stock": 13
     },
     {
       "category": "곡류",
@@ -402,7 +402,8 @@
       "lunch_eaten": false,
       "dinner_eaten": false,
       "note": "★ 양파(점심) 큐브 소진",
-      "morning_override": "eaten"
+      "morning_override": "eaten",
+      "lunch_override": "eaten"
     },
     {
       "date": "10월11일",
