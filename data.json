@@ -86,7 +86,7 @@
       "category": "채소류",
       "name": "고구마",
       "initial_stock": 0,
-      "current_stock": 16
+      "current_stock": 7
     },
     {
       "category": "채소류",
@@ -411,7 +411,6 @@
       "morning": [
         "쌀",
         "퀴노아",
-        "닭고기",
         "적채",
         "사과",
         "고구마"
