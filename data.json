@@ -437,7 +437,8 @@
       "morning_eaten": false,
       "lunch_eaten": false,
       "dinner_eaten": false,
-      "note": "★ 시금치(저녁) 소진 완료"
+      "note": "★ 시금치(저녁) 소진 완료",
+      "morning_override": "eaten"
     },
     {
       "date": "10월12일",
