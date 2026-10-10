@@ -4,7 +4,7 @@
       "category": "단백질",
       "name": "소고기",
       "initial_stock": 12,
-      "current_stock": 8
+      "current_stock": 7
     },
     {
       "category": "단백질",
@@ -37,7 +37,7 @@
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 24
+      "current_stock": 23
     },
     {
       "category": "채소류",
@@ -55,7 +55,7 @@
       "category": "채소류",
       "name": "아욱",
       "initial_stock": 9,
-      "current_stock": 5
+      "current_stock": 4
     },
     {
       "category": "채소류",
@@ -122,7 +122,7 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 15,
+      "current_stock": 14,
       "manual_adjustment": -22
     },
     {
@@ -739,14 +739,6 @@
       "category": "곡류",
       "quantity": 16,
       "exp_date": "2026-10-23",
-      "memo": ""
-    },
-    {
-      "date": "2026-10-08",
-      "ingredient": "고구마",
-      "category": "채소류",
-      "quantity": 9,
-      "exp_date": "2026-10-22",
       "memo": ""
     },
     {
