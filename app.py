@@ -1245,6 +1245,26 @@ with tab3:
             """, unsafe_allow_html=True)
         with c_adj:
             st.write("")
+            with st.popover("✏️ 수량 수정", use_container_width=True):
+                st.caption(f"**{name}** 실재고 직접 입력")
+                new_qty = st.number_input(
+                    "현재 냉동실 수량 (개)",
+                    min_value=0,
+                    max_value=99,
+                    value=int(stock),
+                    step=1,
+                    key=f"num_adj_{name}"
+                )
+                if st.button("💾 변경 저장", key=f"btn_set_{name}", type="primary", use_container_width=True):
+                    init_val = item.get("initial_stock", item.get("current_stock", 0))
+                    prod_val = sum(l.get("quantity", 0) for l in data.get("production_logs", []) if l.get("ingredient") == name)
+                    cons_val = consumed_counts.get(name, 0)
+                    base_val = init_val + prod_val - cons_val
+                    item["manual_adjustment"] = int(new_qty) - base_val
+                    storage.save_data(data)
+                    st.toast(f"✅ {name} 재고가 {new_qty}개로 설정되었습니다!")
+                    st.rerun()
+
             b_minus, b_plus = st.columns(2)
             with b_minus:
                 if st.button("➖ 1", key=f"dec_{name}", use_container_width=True):
