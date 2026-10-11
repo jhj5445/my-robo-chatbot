@@ -4,7 +4,7 @@
       "category": "단백질",
       "name": "소고기",
       "initial_stock": 12,
-      "current_stock": 7
+      "current_stock": 6
     },
     {
       "category": "단백질",
@@ -37,7 +37,7 @@
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 23
+      "current_stock": 22
     },
     {
       "category": "채소류",
@@ -55,7 +55,7 @@
       "category": "채소류",
       "name": "아욱",
       "initial_stock": 9,
-      "current_stock": 4
+      "current_stock": 3
     },
     {
       "category": "채소류",
@@ -122,7 +122,7 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 13,
+      "current_stock": 12,
       "manual_adjustment": -22
     },
     {
@@ -480,7 +480,6 @@
         "쌀",
         "퀴노아",
         "소고기",
-        "비트",
         "애호박",
         "아욱"
       ],
