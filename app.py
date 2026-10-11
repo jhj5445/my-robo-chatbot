@@ -581,6 +581,66 @@ def get_best_topping_recommendation(current_ingredients, inventory, surplus_item
     candidates.sort(key=lambda x: -x["score"])
     return candidates[0] if candidates else None
 
+# ==========================================
+# 🧪 알레르기 추적 & 신규 재료 3일 테스트 엔진
+# ==========================================
+def build_allergy_timeline(meals, allergy_records=None):
+    if allergy_records is None:
+        allergy_records = {}
+
+    sorted_meal_indices = sorted(
+        range(len(meals)),
+        key=lambda i: parse_meal_date(meals[i].get("date", "")) or date(9999, 12, 31)
+    )
+
+    ing_first_info = {}
+    ing_counts_up_to = {}
+
+    for order_idx, m_idx in enumerate(sorted_meal_indices):
+        m = meals[m_idx]
+        all_ings = set(m.get("morning", []) + m.get("lunch", []) + m.get("dinner", []))
+        for ing in all_ings:
+            if not ing:
+                continue
+            if ing not in ing_first_info:
+                ing_first_info[ing] = {
+                    "first_date": m.get("date", ""),
+                    "first_order_idx": order_idx,
+                    "first_meal_idx": m_idx,
+                    "is_baseline": (order_idx == 0)
+                }
+            prev_count = 0
+            for prior_idx in sorted_meal_indices[:order_idx]:
+                prior_m = meals[prior_idx]
+                prior_ings = set(prior_m.get("morning", []) + prior_m.get("lunch", []) + prior_m.get("dinner", []))
+                if ing in prior_ings:
+                    prev_count += 1
+            ing_counts_up_to[(ing, m_idx)] = prev_count + 1
+
+    return ing_first_info, ing_counts_up_to
+
+def get_allergy_status(ing, count, is_baseline, record):
+    if record:
+        st_val = record.get("status")
+        if st_val == "caution":
+            return "caution", "🚨 알레르기 의심/주의", "#ef4444"
+        elif st_val == "safe":
+            return "safe", "✅ 안전 통과 (확인됨)", "#10b981"
+        elif st_val == "testing":
+            return "testing", f"🧪 테스트 중 ({count}일차)", "#f59e0b"
+
+    if is_baseline:
+        return "safe", "✅ 기본 안전 식재료", "#10b981"
+
+    if count == 1:
+        return "testing_day1", "🚨 신규 재료 1일차 (오늘 첫 시식!)", "#ef4444"
+    elif count == 2:
+        return "testing_day2", "🧪 신규 재료 2일차 (테스트 중)", "#f59e0b"
+    elif count == 3:
+        return "testing_day3", "🧪 신규 재료 3일차 (마지막 테스트)", "#f59e0b"
+    else:
+        return "safe", f"✅ {count}회차 급여 (통과 완료)", "#10b981"
+
 # Calculate Chronological Depletion & Deadlines with Automatic Deduction
 def calculate_system_state(data, auto_mode=False):
     meals = data.get("meals", [])
@@ -776,7 +836,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 큐브 재고",
     "🛒 장보기",
     "📅 식단표",
-    "🥗 영양 가이드"
+    "🥗 영양 & 알레르기 도감"
 ])
 
 # ==========================================
@@ -808,6 +868,75 @@ with tab1:
 
         if meal_entry.get("note"):
             st.caption(f"💡 **특이사항**: {meal_entry['note']}")
+
+        # 🧪 알레르기 신규 재료 실시간 관찰 배너
+        allergy_records = data.setdefault("allergy_records", {})
+        ing_first_info, ing_counts_up_to = build_allergy_timeline(meals, allergy_records)
+
+        today_all_ings = set(meal_entry.get("morning", []) + meal_entry.get("lunch", []) + meal_entry.get("dinner", []))
+        
+        testing_items_today = []
+        for t_ing in sorted(list(today_all_ings)):
+            if not t_ing:
+                continue
+            f_info = ing_first_info.get(t_ing, {})
+            cnt = ing_counts_up_to.get((t_ing, selected_idx), 1)
+            rec = allergy_records.get(t_ing)
+            st_code, b_text, b_color = get_allergy_status(t_ing, cnt, f_info.get("is_baseline", False), rec)
+            if "testing" in st_code or st_code == "caution" or (rec and rec.get("status") == "caution"):
+                testing_items_today.append({
+                    "name": t_ing,
+                    "code": st_code,
+                    "badge_text": b_text,
+                    "badge_color": b_color,
+                    "count": cnt,
+                    "rec": rec
+                })
+
+        if testing_items_today:
+            has_caution = any(x["code"] == "caution" or (x["rec"] and x["rec"].get("status") == "caution") for x in testing_items_today)
+            banner_bg = "#fef2f2" if has_caution else "#fffbeb"
+            banner_border = "#f87171" if has_caution else "#fcd34d"
+            banner_title = "🚨 알레르기 주의 재료 확인" if has_caution else "🧪 오늘 신규 재료 알레르기 관찰 알림"
+
+            st.markdown(f"""
+            <div style="background:{banner_bg}; border:1.5px solid {banner_border}; border-radius:10px; padding:10px 14px; margin-bottom:12px;">
+                <div style="font-weight:bold; font-size:0.95rem; color:#92400e; margin-bottom:4px;">
+                    {banner_title}
+                </div>
+                <div style="font-size:0.83rem; color:#475569; line-height:1.4;">
+                    💡 <b>소아과 급여 팁:</b> 새로운 식재료는 응급 시 병원 진료가 가능한 <b>오전(아침)</b>에 급여하시고, 먹인 후 2~3시간 동안 입 주변 발진, 두드러기, 구토, 설사가 없는지 관찰해 주세요.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            for item in testing_items_today:
+                c_t_info, c_t_act = st.columns([3, 2])
+                with c_t_info:
+                    st.markdown(f"""
+                    <div style="padding:4px 0;">
+                        <b style="font-size:0.98rem;">{item['name']}</b> 
+                        <span style="background:{item['badge_color']}; color:white; font-size:0.75rem; font-weight:bold; padding:2px 8px; border-radius:10px;">{item['badge_text']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with c_t_act:
+                    c_act_ok, c_act_warn = st.columns(2)
+                    with c_act_ok:
+                        if st.button("✅ 통과", key=f"allg_ok_{selected_idx}_{item['name']}", help=f"{item['name']} 이상 없음(안전 통과) 처리", use_container_width=True):
+                            allergy_records[item['name']] = {"status": "safe", "date": meal_entry.get("date", ""), "note": "이상 없음"}
+                            storage.save_data(data)
+                            st.toast(f"🎉 '{item['name']}' 안전 식재료로 등록 완료!")
+                            st.rerun()
+                    with c_act_warn:
+                        with st.popover("⚠️ 의심", use_container_width=True):
+                            st.caption(f"**{item['name']}** 이상 반응 기록")
+                            sym_note = st.text_input("증상 메모", placeholder="예: 입 주위 붉은 발진, 묽은 변", key=f"sym_input_{selected_idx}_{item['name']}")
+                            if st.button("저장", key=f"save_sym_{selected_idx}_{item['name']}", type="primary", use_container_width=True):
+                                allergy_records[item['name']] = {"status": "caution", "date": meal_entry.get("date", ""), "note": sym_note.strip()}
+                                storage.save_data(data)
+                                st.toast(f"⚠️ '{item['name']}' 알레르기 주의 상태로 기록되었습니다.")
+                                st.rerun()
+            st.write("")
 
         # 📱 Mobile-friendly Meal Segmented Switcher (Default to current time of day)
         curr_hour = now.hour
@@ -1735,6 +1864,114 @@ with tab5:
 # TAB 6: 🥗 이유식 영양 & 궁합 코칭 가이드
 # ==========================================
 with tab6:
+    # ==========================================
+    # 📖 우리 아기 식재료 알레르기 테스트 & 안전 도감
+    # ==========================================
+    st.subheader("📖 우리 아기 식재료 알레르기 도감 & 테스트 현황")
+    st.caption("식단표 데이터를 분석하여 지금까지 먹어본 재료, 현재 3일 테스트 중인 재료, 안전이 확인된 재료를 체계적으로 정리합니다.")
+
+    allergy_records = data.setdefault("allergy_records", {})
+    meals_for_allg = data.get("meals", [])
+    ing_first_info, ing_counts_up_to = build_allergy_timeline(meals_for_allg, allergy_records)
+
+    # Reference index: today or latest meal
+    ref_idx = 0
+    today_str = f"{now.month}월{now.day}일"
+    for idx_m, m_item in enumerate(meals_for_allg):
+        if m_item.get("date", "").replace(" ", "") == today_str:
+            ref_idx = idx_m
+            break
+    else:
+        ref_idx = len(meals_for_allg) - 1 if meals_for_allg else 0
+
+    safe_list = []
+    testing_list = []
+    caution_list = []
+    all_seen_names = set(ing_first_info.keys())
+
+    for ing in sorted(list(all_seen_names)):
+        rec = allergy_records.get(ing)
+        f_info = ing_first_info.get(ing, {})
+        is_base = f_info.get("is_baseline", False)
+        cnt = ing_counts_up_to.get((ing, ref_idx), 0)
+        st_code, b_text, b_color = get_allergy_status(ing, cnt, is_base, rec)
+
+        if st_code == "caution":
+            caution_list.append((ing, b_text, rec.get("note", "")))
+        elif "testing" in st_code:
+            testing_list.append((ing, b_text, cnt))
+        else:
+            safe_list.append((ing, b_text))
+
+    untested_list = sorted([item["name"] for item in data.get("inventory", []) if item["name"] not in all_seen_names])
+
+    # 4 Metrics
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    m_col1.metric("🟢 안전 통과 식재료", f"{len(safe_list)} 종")
+    m_col2.metric("🟡 테스트 진행 중", f"{len(testing_list)} 종")
+    m_col3.metric("🔴 알레르기 주의", f"{len(caution_list)} 종")
+    m_col4.metric("⚪ 미시식 (냉동실)", f"{len(untested_list)} 종")
+
+    c_box1, c_box2 = st.columns(2)
+    with c_box1:
+        st.markdown("##### 🟢 안전 확인 식재료")
+        if safe_list:
+            safe_tags = "".join([f'<span style="display:inline-block; background:#dcfce7; border:1px solid #86efac; color:#166534; padding:3px 8px; border-radius:12px; font-size:0.83rem; font-weight:600; margin:2px 3px;">✅ {ing}</span>' for ing, _ in safe_list])
+            st.markdown(f'<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px; margin-bottom:10px;">{safe_tags}</div>', unsafe_allow_html=True)
+        else:
+            st.info("아직 등록된 안전 식재료가 없습니다.")
+
+        st.markdown("##### 🟡 현재 테스트 중인 재료 (3일 관찰)")
+        if testing_list:
+            test_tags = "".join([f'<span style="display:inline-block; background:#fef3c7; border:1px solid #fcd34d; color:#92400e; padding:3px 8px; border-radius:12px; font-size:0.83rem; font-weight:600; margin:2px 3px;">🧪 {ing} ({cnt}일차)</span>' for ing, _, cnt in testing_list])
+            st.markdown(f'<div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:10px; margin-bottom:10px;">{test_tags}</div>', unsafe_allow_html=True)
+        else:
+            st.success("현재 3일 테스트 진행 중인 재료가 없습니다.")
+
+    with c_box2:
+        st.markdown("##### 🔴 알레르기 주의 / 이상 반응 기록")
+        if caution_list:
+            for c_ing, _, note in caution_list:
+                st.markdown(f"""
+                <div style="background:#fef2f2; border:1.5px solid #f87171; border-radius:8px; padding:8px 12px; margin-bottom:6px; font-size:0.85rem;">
+                    <b style="color:#b91c1c;">🚨 {c_ing}</b> <span style="color:#64748b;">(특이 반응: {note or '기록 없음'})</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.success("🎉 이상 반응이나 알레르기가 의심된 재료가 없습니다!")
+
+        st.markdown("##### ⚪ 아직 시식 전 (냉동실 보관 중)")
+        if untested_list:
+            untested_tags = "".join([f'<span style="display:inline-block; background:#f1f5f9; border:1px solid #cbd5e1; color:#475569; padding:3px 8px; border-radius:12px; font-size:0.83rem; margin:2px 3px;">⚪ {ing}</span>' for ing in untested_list])
+            st.markdown(f'<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px; margin-bottom:10px;">{untested_tags}</div>', unsafe_allow_html=True)
+        else:
+            st.caption("냉동실의 모든 재료가 식단에 반영되어 있습니다.")
+
+    with st.expander("✏️ 식재료별 알레르기 상태 직접 수정 / 메모 관리", expanded=False):
+        all_manageable = sorted(list(all_seen_names.union(set(untested_list))))
+        if all_manageable:
+            c_sel_m, c_stat_m = st.columns(2)
+            with c_sel_m:
+                sel_ing_m = st.selectbox("관리할 재료 선택", all_manageable, key="sel_ing_manage_allg")
+            with c_stat_m:
+                curr_status_m = allergy_records.get(sel_ing_m, {}).get("status", "자동 판정")
+                stat_options = ["✅ 안전 통과 (Safe)", "⚠️ 알레르기 주의 (Caution)", "🧪 테스트 중 (Testing)", "🔄 자동 판정으로 초기화"]
+                curr_opt_idx = 0 if curr_status_m == "safe" else (1 if curr_status_m == "caution" else (2 if curr_status_m == "testing" else 3))
+                sel_new_stat = st.selectbox("상태 변경", stat_options, index=curr_opt_idx, key="sel_stat_manage_allg")
+            
+            sel_note_m = st.text_input("메모 / 특이 반응 기록", value=allergy_records.get(sel_ing_m, {}).get("note", ""), key="note_manage_allg")
+            if st.button("💾 상태 저장", key="btn_save_allg_manage", type="primary", use_container_width=True):
+                if sel_new_stat == "🔄 자동 판정으로 초기화":
+                    if sel_ing_m in allergy_records:
+                        del allergy_records[sel_ing_m]
+                else:
+                    new_code = "safe" if "안전" in sel_new_stat else ("caution" if "주의" in sel_new_stat else "testing")
+                    allergy_records[sel_ing_m] = {"status": new_code, "note": sel_note_m.strip(), "date": get_now().strftime("%Y-%m-%d")}
+                storage.save_data(data)
+                st.toast(f"✅ '{sel_ing_m}' 상태가 저장되었습니다!")
+                st.rerun()
+
+    st.divider()
     st.subheader("👶 이유식 재료 영양 & 황금 궁합 가이드")
     st.markdown("""
     > 💡 **참고 안내:**  
