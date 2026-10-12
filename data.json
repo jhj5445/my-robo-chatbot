@@ -69,7 +69,8 @@
       "category": "채소류",
       "name": "청경채",
       "initial_stock": 7,
-      "current_stock": 6
+      "current_stock": 6,
+      "manual_adjustment": -6
     },
     {
       "category": "채소류",
@@ -124,7 +125,7 @@
       "category": "곡류",
       "name": "쌀",
       "initial_stock": 45,
-      "current_stock": 10,
+      "current_stock": 13,
       "manual_adjustment": -19
     },
     {
