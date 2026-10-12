@@ -32,7 +32,8 @@
       "category": "채소류",
       "name": "브로콜리",
       "initial_stock": 3,
-      "current_stock": 11
+      "current_stock": 11,
+      "manual_adjustment": -3
     },
     {
       "category": "채소류",
@@ -136,7 +137,7 @@
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 11,
+      "current_stock": 0,
       "manual_adjustment": -11
     },
     {
