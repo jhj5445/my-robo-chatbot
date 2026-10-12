@@ -91,7 +91,7 @@
       "category": "채소류",
       "name": "고구마",
       "initial_stock": 0,
-      "current_stock": 5,
+      "current_stock": 6,
       "manual_adjustment": 1
     },
     {
@@ -136,7 +136,8 @@
       "category": "곡류",
       "name": "퀴노아",
       "initial_stock": 15,
-      "current_stock": 11
+      "current_stock": 11,
+      "manual_adjustment": -11
     },
     {
       "category": "곡류",
