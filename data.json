@@ -79,7 +79,8 @@
       "category": "채소류",
       "name": "적채",
       "initial_stock": 0,
-      "current_stock": 18
+      "current_stock": 18,
+      "manual_adjustment": -2
     },
     {
       "category": "채소류",
@@ -151,7 +152,7 @@
       "category": "곡류",
       "name": "보리",
       "initial_stock": 15,
-      "current_stock": 12,
+      "current_stock": 0,
       "manual_adjustment": -12
     },
     {
