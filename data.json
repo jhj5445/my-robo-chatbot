@@ -39,13 +39,14 @@
       "category": "채소류",
       "name": "양배추",
       "initial_stock": 12,
-      "current_stock": 21
+      "current_stock": 21,
+      "manual_adjustment": -11
     },
     {
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 15,
+      "current_stock": 8,
       "manual_adjustment": -7
     },
     {
