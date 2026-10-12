@@ -25,7 +25,7 @@
       "name": "무",
       "initial_stock": 6,
       "current_stock": 0,
-      "manual_adjustment": -2
+      "manual_adjustment": 15
     },
     {
       "category": "채소류",
@@ -135,7 +135,7 @@
       "category": "곡류",
       "name": "오트밀",
       "initial_stock": 15,
-      "current_stock": 0,
+      "current_stock": 14,
       "manual_adjustment": 5
     },
     {
