@@ -32,7 +32,7 @@
       "category": "채소류",
       "name": "브로콜리",
       "initial_stock": 3,
-      "current_stock": 7,
+      "current_stock": 8,
       "manual_adjustment": -3
     },
     {
@@ -151,7 +151,8 @@
       "category": "곡류",
       "name": "보리",
       "initial_stock": 15,
-      "current_stock": 12
+      "current_stock": 12,
+      "manual_adjustment": -12
     },
     {
       "category": "곡류",
