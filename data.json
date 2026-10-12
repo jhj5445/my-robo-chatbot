@@ -4,7 +4,8 @@
       "category": "단백질",
       "name": "소고기",
       "initial_stock": 12,
-      "current_stock": 5
+      "current_stock": 5,
+      "manual_adjustment": -1
     },
     {
       "category": "단백질",
@@ -49,7 +50,7 @@
       "category": "채소류",
       "name": "당근",
       "initial_stock": 13,
-      "current_stock": 6,
+      "current_stock": 0,
       "manual_adjustment": -6
     },
     {
