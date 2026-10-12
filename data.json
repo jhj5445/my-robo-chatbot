@@ -62,7 +62,7 @@
       "name": "양파",
       "initial_stock": 4,
       "current_stock": 0,
-      "manual_adjustment": -2
+      "manual_adjustment": 15
     },
     {
       "category": "채소류",
@@ -92,7 +92,7 @@
       "category": "채소류",
       "name": "비트",
       "initial_stock": 0,
-      "current_stock": 0,
+      "current_stock": 8,
       "manual_adjustment": 8
     },
     {
