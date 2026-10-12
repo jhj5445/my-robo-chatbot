@@ -45,7 +45,8 @@
       "category": "채소류",
       "name": "시금치",
       "initial_stock": 8,
-      "current_stock": 15
+      "current_stock": 15,
+      "manual_adjustment": -7
     },
     {
       "category": "채소류",
@@ -79,7 +80,7 @@
       "category": "채소류",
       "name": "적채",
       "initial_stock": 0,
-      "current_stock": 18,
+      "current_stock": 16,
       "manual_adjustment": -2
     },
     {
