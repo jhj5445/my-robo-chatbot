@@ -168,7 +168,7 @@
       "category": "곡류",
       "name": "쌀죽",
       "initial_stock": 0,
-      "current_stock": 19,
+      "current_stock": 0,
       "manual_adjustment": -19
     }
   ],
@@ -487,16 +487,15 @@
       "note": "★ 아욱(아침) 큐브 소진 / 식단 교체"
     },
     {
-      "date": "10월13일",
+      "date": "10월 13일",
       "day_of_week": "화",
       "morning": [
         "쌀",
         "퀴노아",
         "소고기",
+        "비트",
         "애호박",
-        "아욱",
-        "브로콜리",
-        "당근"
+        "아욱"
       ],
       "lunch": [
         "쌀",
@@ -512,15 +511,12 @@
         "닭고기",
         "양배추",
         "양파",
-        "시금치",
-        "고구마"
+        "단호박"
       ],
       "morning_eaten": false,
       "lunch_eaten": false,
       "dinner_eaten": false,
-      "note": "★ 청경채(점심) 큐브 소진",
-      "morning_override": "eaten",
-      "dinner_override": "eaten"
+      "note": "★ 아욱(아침) 큐브 소진 / 식단 교체"
     },
     {
       "date": "10월14일",
