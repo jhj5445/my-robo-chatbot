@@ -161,7 +161,7 @@
       "category": "곡류",
       "name": "쌀퀴노아죽",
       "initial_stock": 0,
-      "current_stock": 5,
+      "current_stock": 0,
       "manual_adjustment": -5
     },
     {
@@ -169,7 +169,7 @@
       "name": "쌀죽",
       "initial_stock": 0,
       "current_stock": 19,
-      "manual_adjustment": 0
+      "manual_adjustment": -19
     }
   ],
   "meals": [
